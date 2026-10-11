@@ -102,7 +102,7 @@ On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests
 
 - The glow and trail are made for dark and mid-tone backgrounds. On very light pages they are subtler (a defined but faint halo), so they don't look like the demo there.
 - The overlay doesn't know the current cursor shape, so the glow also appears around an I-beam during a text drag.
-- Right after a theme switch, the rebuild takes 1-2 s, so the old color shows briefly.
+- Right after a theme or color change, the rebuild takes 1-2 s. The glow updates at once, but the real pointer image refreshes the next time you move onto another window or the bar. That is how Hyprland handles cursor themes, and it affects every cursor theme, not just Kyber.
 - The glow only follows the cursor's logical position. On unusual scaling setups the overlay can be slightly off; set `CURSOR_OVERLAY_SCALE` (e.g. `1.05`) in the service environment to fine-tune.
 - Tested on one machine (Hyprland 0.56, 1.6x scaling). Reports from other setups are welcome.
 
