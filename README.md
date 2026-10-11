@@ -1,6 +1,6 @@
 # Kyber Cursor
 
-A mouse pointer for Omarchy / Hyprland inspired by the lightsaber from Star Wars, the iconic weapon of a very famous space opera. Kyber is the crystal that gives a saber its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites: a brighter blade, two crossguard beams, a glow that pulses, and a fading light trail when you drag. Optional sound effects.
+A mouse pointer for Omarchy / Hyprland inspired by the iconic weapon, the laser-sword from a very famous space opera. Kyber is the crystal that gives a saber its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites: a brighter blade, two crossguard beams, a glow that pulses, and a fading light trail when you drag. Optional sound effects.
 
 ![Kyber igniting on click-and-hold, with the drag trail](media/demo.gif)
 
