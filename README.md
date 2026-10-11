@@ -12,6 +12,8 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 - Full cursor set (pointer, link, busy, text, crosshair, move, resize, grab, not-allowed...), regenerated in the current accent on every `omarchy theme set` and at boot.
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
+- A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), sound mode and volume, drag trail and on/off switches. No terminal needed.
+- Pick your own glow color instead of following the theme accent (optional; off by default).
 - Optional sounds (bring your own clips): ignite after a 0.3 s hold, off on release, a clash on double-click. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
@@ -68,8 +70,14 @@ kyber apply        # rebuild in the current accent and switch to it
 kyber off          # back to Adwaita (the glow stops too)
 kyber sound        # cycle sound mode: all -> ignite -> mute
 kyber trail        # toggle the drag trail (or `kyber trail on` / `kyber trail off`)
+kyber color #ff7a00 # your own color for the whole cursor (or: kyber color theme)
+kyber volume 40    # sound volume, 0-100
+kyber config       # every setting as one line of JSON
 kyber status
 ```
+### The bar button
+Add it to your bar with `omarchy bar put io.github.s3pp3ku.kyber-cursor` (the installer doesn't touch your bar). Left-click opens the options popup, middle-click cycles the sound, right-click turns Kyber on or off.
+
 Bind the sound and trail toggles to keys if you like. In Omarchy's Lua bindings (`~/.config/hypr/bindings.lua`):
 ```lua
 o.bind("F10", "Cycle Kyber sound", "kyber sound")

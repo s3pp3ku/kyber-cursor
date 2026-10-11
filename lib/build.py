@@ -479,8 +479,8 @@ def write_overlay(glow, theme_dir):
         light_layers.append({**meta_layer, 'image': lname})
     meta = {'px_per_unit': unit, 'origin': [vb[0], vb[1]], 'hotspot': [T[0], T[1]],
             'view_w': VIEW[2], 'scale': SCALE, 'sizes': list(SIZES), 'layers': layers, 'light_layers': light_layers,
-            # colours for the drag trail (dark and light backgrounds)
-            'trail_rgb': [[round(int(c[i:i + 2], 16) / 255, 3) for i in (1, 3, 5)] for c in (haze, lc)]}
+            # colours for the drag trail: dark backgrounds / light backgrounds (deeper, or it vanishes on a pale page)
+            'trail_rgb': [[round(int(c[i:i + 2], 16) / 255, 3) for i in (1, 3, 5)] for c in (haze, darken(glow, 0.20))]}
     (theme_dir / 'overlay.json').write_text(json.dumps(meta) + '\n')
     stale = theme_dir / 'overlay.png'
     if stale.exists():

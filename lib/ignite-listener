@@ -71,7 +71,7 @@ TRAIL_S = 0.60     # how long a drag's light trail lingers
 TRAIL_ALPHA = 0.9
 TRAIL_UNITS = 7.0  # trail width at the cursor tip, in cursor-art units
 SURGE_S = 0.45    # after the ignite sound starts, the blade holds full brightness this long
-SOUND_VOLUME = '0.55'
+SOUND_VOLUME = '0.55'   # default; `kyber volume N` overrides it via STATE/volume
 # Fine-tunes the overlay's size if it doesn't line up with the cursor.
 SIZE_FUDGE = float(os.environ.get('CURSOR_OVERLAY_SCALE', '1.0'))
 
@@ -417,10 +417,18 @@ def play_clip(folder):
         play_file(random.choice(clips))
 
 
+def sound_volume():
+    try:
+        with open(os.path.join(STATE, 'volume')) as f:
+            return '%.2f' % (max(0, min(100, int(f.read().strip()))) / 100.0)
+    except (OSError, ValueError):
+        return SOUND_VOLUME
+
+
 def play_file(path):
     try:
         # spawn_async reaps the child itself; nothing to wait on here
-        GLib.spawn_async(['pw-play', '--volume', SOUND_VOLUME, path],
+        GLib.spawn_async(['pw-play', '--volume', sound_volume(), path],
                          flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.STDOUT_TO_DEV_NULL
                          | GLib.SpawnFlags.STDERR_TO_DEV_NULL)
     except GLib.Error:

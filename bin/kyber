@@ -5,6 +5,8 @@
 #   kyber off            go back to the Adwaita cursor (the glow stops too)
 #   kyber sound [mode]   all | ignite | mute | cycle (default: cycle)
 #   kyber trail [on|off]  the drag trail (default: toggle)
+#   kyber color #rrggbb|theme  your own glow color (default: the theme accent)
+#   kyber volume 0-100         sound volume
 #   kyber status         what is installed and running
 set -euo pipefail
 
@@ -53,7 +55,9 @@ install_theme() {
 
 cmd_apply() {
   local acc recipe cached="" existing
-  acc=$(accent)
+  # a colour the user picked (`kyber color`) wins over the theme's accent
+  acc=$(cat "$STATE/color" 2>/dev/null || true)
+  [[ $acc =~ ^#[0-9a-fA-F]{6}$ ]] || acc=$(accent)
   [[ $acc =~ ^#[0-9a-fA-F]{6}$ ]] || acc="#7aa2f7"   # no Omarchy theme found: a neutral blue
   recipe=$(cat "$PLUGIN_DIR/lib/build.py" | sha256sum | cut -d' ' -f1)
   mkdir -p "$ICONS" "$BUILDS" "$STATE"
@@ -125,6 +129,36 @@ cmd_trail() {
   echo "$next"
 }
 
+cmd_color() {
+  mkdir -p "$STATE"
+  local f="$STATE/color" v="${1:-}"
+  case $v in
+    "") cat "$f" 2>/dev/null || echo theme; return 0 ;;
+    theme|accent|none) rm -f "$f"; echo theme ;;
+    *) v=${v#\#}
+       [[ $v =~ ^[0-9a-fA-F]{6}$ ]] || { echo "usage: kyber color #rrggbb | theme" >&2; exit 2; }
+       printf '#%s\n' "${v,,}" > "$f"; echo "#${v,,}" ;;
+  esac
+  # rebuild right away if Kyber is the active cursor
+  if [[ -f $STATE/active ]]; then cmd_apply >/dev/null; fi
+}
+
+cmd_volume() {
+  mkdir -p "$STATE"
+  local f="$STATE/volume" v="${1:-}"
+  if [[ -z $v ]]; then cat "$f" 2>/dev/null || echo 55; return 0; fi
+  [[ $v =~ ^[0-9]+$ && $v -le 100 ]] || { echo "usage: kyber volume 0-100" >&2; exit 2; }
+  echo "$v" > "$f"; echo "$v"
+}
+
+# One line of JSON with every setting, for the bar widget (and for scripts).
+cmd_config() {
+  local active=false; [[ -f $STATE/active ]] && active=true
+  printf '{"active":%s,"color":"%s","sound":"%s","trail":"%s","volume":%s}\n' "$active" \
+    "$(cat "$STATE/color" 2>/dev/null || echo theme)" "$(cat "$STATE/sound-mode" 2>/dev/null || echo all)" \
+    "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" "$(cat "$STATE/volume" 2>/dev/null || echo 55)"
+}
+
 cmd_status() {
   echo "plugin:   $PLUGIN_DIR"
   echo "cursor:   $([[ -e $ICONS/$THEME ]] && echo "installed" || echo "not built (run: kyber apply)")"
@@ -133,6 +167,8 @@ cmd_status() {
   echo "glow:     ${glow:-not installed}"
   echo "sound:    $(cat "$STATE/sound-mode" 2>/dev/null || echo all)"
   echo "trail:    $(cat "$STATE/trail-mode" 2>/dev/null || echo on)"
+  echo "color:    $(cat "$STATE/color" 2>/dev/null || echo "theme accent")"
+  echo "volume:   $(cat "$STATE/volume" 2>/dev/null || echo 55)"
   local d n
   for d in ignite off clash; do
     n=$(find "$STATE/sounds/$d" -maxdepth 1 -type f 2>/dev/null | wc -l || true)
@@ -146,6 +182,9 @@ case "${1:-}" in
   off)    cmd_off ;;
   sound)  shift; cmd_sound "$@" ;;
   trail)  shift; cmd_trail "$@" ;;
+  color)  shift; cmd_color "$@" ;;
+  volume) shift; cmd_volume "$@" ;;
+  config) cmd_config ;;
   status) cmd_status ;;
-  *) sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z ${1:-} ]] || exit 2 ;;
+  *) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z ${1:-} ]] || exit 2 ;;
 esac

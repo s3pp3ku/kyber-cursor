@@ -2,13 +2,66 @@
   "schemaVersion": 1,
   "id": "io.github.s3pp3ku.kyber-cursor",
   "name": "Kyber Cursor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "s3pp3ku",
   "license": "MIT",
   "description": "A glowing blade-and-hilt mouse pointer in your theme's accent color that ignites when you hold a button: glow, crossguard beams, a drag trail and optional sounds.",
-  "kinds": ["service"],
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
   "keepLoaded": true,
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "barWidget": "KyberWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Kyber Cursor",
+    "description": "Sound, trail and glow color for the Kyber cursor. Click to change the options.",
+    "category": "Appearance",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "color": "",
+      "sound": "all",
+      "trail": true,
+      "volume": 55
+    },
+    "schema": [
+      {
+        "key": "color",
+        "type": "string",
+        "label": "Glow color",
+        "description": "A hex color such as #ff7a00. Leave blank to follow the theme accent.",
+        "defaultValue": ""
+      },
+      {
+        "key": "sound",
+        "type": "enum",
+        "label": "Sound",
+        "options": [
+          "all",
+          "ignite",
+          "mute"
+        ],
+        "defaultValue": "all",
+        "description": "all: ignite and off sounds; ignite: ignite only; mute: no sound."
+      },
+      {
+        "key": "trail",
+        "type": "boolean",
+        "label": "Drag trail",
+        "defaultValue": true
+      },
+      {
+        "key": "volume",
+        "type": "integer",
+        "label": "Sound volume (%)",
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 55
+      }
+    ]
   }
 }
