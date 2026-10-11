@@ -88,7 +88,7 @@ BarWidget {
     }
   }
 
-  Timer { id: refreshTimer; interval: 700; onTriggered: root.refresh() }
+  Timer { id: refreshTimer; interval: 250; onTriggered: root.refresh() }
   // pick up changes made with the keybinds or the terminal
   Timer { interval: 4000; running: true; repeat: true; onTriggered: root.refresh() }
 
