@@ -46,7 +46,13 @@ for d in theme-set.d post-boot.d; do
 done
 "$PLUGIN_DIR/bin/kyber" apply
 systemctl --user daemon-reload
-systemctl --user enable --now kyber-ignite.service
+if id -nG | tr ' ' '\n' | grep -qx input; then
+  systemctl --user enable --now kyber-ignite.service
+else
+  # without the group the glow helper cannot see button presses and would just
+  # fail and restart; the cursor itself works fine without it
+  echo "Skipping the click-glow service for now (you are not in the 'input' group)."
+fi
 
 if ! id -nG | tr ' ' '\n' | grep -qx input; then
   cat <<MSG
@@ -55,6 +61,9 @@ The click glow reads mouse buttons from /dev/input, which needs the 'input'
 group. This installer does not use sudo, so run this yourself, then reboot
 (a logout is not enough if systemd --user lingers):
     sudo usermod -aG input "$USER"
+Then run:  systemctl --user enable --now kyber-ignite.service
+Without it you still get the cursor in your theme's accent; only the click
+glow, trail and sounds stay off.
 MSG
 fi
 echo "Done. Try holding a mouse button. 'kyber status' shows the state."

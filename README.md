@@ -15,6 +15,26 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 - Optional sounds (bring your own clips): ignite after a 0.3 s hold, off on release, a clash on double-click. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
+## Is this safe? (plain English)
+
+**What is it?** Two parts. (1) A cursor theme: just picture files, like any other cursor pack. (2) A small helper program that draws the glow when you hold a mouse button.
+
+**Why does the glow need the "input group"?** On Linux, mouse and keyboard signals arrive in a locked room (`/dev/input`). Only people on a short list, the `input` group, may listen at that door. The helper has to know "is a mouse button held *anywhere on screen*?", and no normal app is told that, so it has to listen at the door. Adding yourself to the list is that permission.
+
+**What's the honest catch?** The list applies to *you*, so any program you run could also listen at that door, **including your keyboard**. That is how Linux works, not something this plugin does, but it is a real trade-off, so don't add yourself unless you are comfortable with it.
+
+**What does the helper actually do?** It checks one thing: is the left, right or middle button down? It ignores keys and mouse movement. It has no network code at all, it saves nothing, and it is about 500 lines of readable Python (`lib/ignite-listener`). It does not block or change your clicks; it only watches.
+
+**Can I skip the group?** Yes. Without it you still get the cursor in your theme's accent. The click glow, trail and sounds simply stay off. The installer detects this and doesn't start the helper.
+
+**Could a command here be hiding something?** The installer never runs `sudo` and never downloads anything. The one `sudo` command is only *printed* for you to read and run yourself. It asks before every change, and `./uninstall.sh` reverses all of it. Don't take my word for it. This searches the code for anything that downloads, talks to the internet or runs hidden code, and it should print nothing:
+
+```
+grep -nE "curl|wget|urllib|AF_INET|import requests|\beval\b|base64" bin/* lib/* install.sh uninstall.sh Service.qml
+```
+
+(The only socket the helper opens is the local one Hyprland provides, to ask where the cursor is.)
+
 ## Requirements
 Hyprland (0.56 tested) on Omarchy, plus these packages (Arch names):
 
