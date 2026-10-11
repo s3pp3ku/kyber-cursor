@@ -5,7 +5,8 @@
 #   kyber off            go back to the Adwaita cursor (the glow stops too)
 #   kyber sound [mode]   all | ignite | mute | cycle (default: cycle)
 #   kyber trail [on|off]  the drag trail (default: toggle)
-#   kyber color #rrggbb|theme  your own glow color (default: the theme accent)
+#   kyber color theme|custom|random|#rrggbb   where the glow color comes from
+#   kyber random               roll a new random color now
 #   kyber volume 0-100         sound volume
 #   kyber status         what is installed and running
 set -euo pipefail
@@ -53,10 +54,66 @@ install_theme() {
   return 0
 }
 
+# ---- glow color: three modes -------------------------------------------------
+#   theme   follow the Omarchy theme's accent (default)
+#   custom  a color the user picked (`kyber color #rrggbb`)
+#   random  a vivid random color, re-rolled when the Omarchy theme changes and
+#           at boot (not on a shell reload or plugin update), or on demand
+color_mode() {
+  local m; m=$(cat "$STATE/color-mode" 2>/dev/null || true)
+  case $m in theme|custom|random) echo "$m"; return 0 ;; esac
+  # settings from 1.1.0 had only a color file
+  if [[ -f $STATE/color ]]; then echo custom; else echo theme; fi
+}
+
+# A random color that always glows well: vivid and bright, and a clearly
+# different hue from the last one.
+roll_color() {
+  local prev tmp; prev=$(cat "$STATE/random-color" 2>/dev/null || true)
+  tmp=$(mktemp)
+  /usr/bin/python3 - "$prev" > "$tmp" <<'PY'
+import colorsys, random, sys
+prev = sys.argv[1]
+ph = None
+if len(prev) == 7 and prev[0] == '#':
+    try:
+        ph = colorsys.rgb_to_hsv(*[int(prev[i:i + 2], 16) / 255 for i in (1, 3, 5)])[0]
+    except ValueError:
+        pass
+while True:
+    h = random.random()
+    if ph is None or min(abs(h - ph), 1 - abs(h - ph)) >= 0.17:
+        break
+r, g, b = colorsys.hsv_to_rgb(h, random.uniform(0.65, 0.95), random.uniform(0.85, 1.0))
+print('#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255)))
+PY
+  if [[ $(cat "$tmp") =~ ^#[0-9a-f]{6}$ ]]; then mv "$tmp" "$STATE/random-color"; else rm -f "$tmp"; fi
+  note_roll_context
+}
+
+# What a roll belongs to: this Omarchy theme in this boot. A new theme or a new
+# boot means "time for a new random color"; a shell reload does not.
+roll_context() {
+  # (|| true: a missing file must not trip `set -e` through the pipeline)
+  local t; t=$( (cat "$HOME/.local/state/omarchy/current/theme.name" "$HOME/.config/omarchy/current/theme.name" 2>/dev/null || true) | head -1)
+  echo "$t|$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
+}
+note_roll_context() { roll_context > "$STATE/roll-context"; }
+
+effective_color() {
+  case $(color_mode) in
+    custom) cat "$STATE/color" 2>/dev/null ;;
+    random)
+      if [[ ! -s $STATE/random-color || $(roll_context) != "$(cat "$STATE/roll-context" 2>/dev/null)" ]]; then roll_color; fi
+      cat "$STATE/random-color" ;;
+    *) accent ;;
+  esac
+}
+
 cmd_apply() {
   local acc recipe cached="" existing
-  # a colour the user picked (`kyber color`) wins over the theme's accent
-  acc=$(cat "$STATE/color" 2>/dev/null || true)
+  mkdir -p "$STATE"
+  acc=$(effective_color || true)
   [[ $acc =~ ^#[0-9a-fA-F]{6}$ ]] || acc=$(accent)
   [[ $acc =~ ^#[0-9a-fA-F]{6}$ ]] || acc="#7aa2f7"   # no Omarchy theme found: a neutral blue
   recipe=$(cat "$PLUGIN_DIR/lib/build.py" | sha256sum | cut -d' ' -f1)
@@ -131,15 +188,33 @@ cmd_trail() {
 
 cmd_color() {
   mkdir -p "$STATE"
-  local f="$STATE/color" v="${1:-}"
+  local v="${1:-}"
   case $v in
-    "") cat "$f" 2>/dev/null || echo theme; return 0 ;;
-    theme|accent|none) rm -f "$f"; echo theme ;;
+    "") echo "$(color_mode) $(effective_color)"; return 0 ;;
+    theme|accent|none) echo theme > "$STATE/color-mode" ;;
+    custom)
+      # back to the last picked color (or the current accent if there is none yet)
+      if [[ ! -f $STATE/color ]]; then accent > "$STATE/color"; fi
+      echo custom > "$STATE/color-mode" ;;
+    random)
+      echo random > "$STATE/color-mode"
+      if [[ ! -s $STATE/random-color ]]; then roll_color; else note_roll_context; fi ;;
     *) v=${v#\#}
-       [[ $v =~ ^[0-9a-fA-F]{6}$ ]] || { echo "usage: kyber color #rrggbb | theme" >&2; exit 2; }
-       printf '#%s\n' "${v,,}" > "$f"; echo "#${v,,}" ;;
+       [[ $v =~ ^[0-9a-fA-F]{6}$ ]] || { echo "usage: kyber color theme | custom | random | #rrggbb" >&2; exit 2; }
+       printf '#%s\n' "${v,,}" > "$STATE/color"
+       echo custom > "$STATE/color-mode" ;;
   esac
+  echo "$(color_mode) $(effective_color)"
   # rebuild right away if Kyber is the active cursor
+  if [[ -f $STATE/active ]]; then cmd_apply >/dev/null; fi
+}
+
+# Roll a new random color now and switch to random mode.
+cmd_random() {
+  mkdir -p "$STATE"
+  roll_color
+  echo random > "$STATE/color-mode"
+  cat "$STATE/random-color"
   if [[ -f $STATE/active ]]; then cmd_apply >/dev/null; fi
 }
 
@@ -153,9 +228,12 @@ cmd_volume() {
 
 # One line of JSON with every setting, for the bar widget (and for scripts).
 cmd_config() {
-  local active=false; [[ -f $STATE/active ]] && active=true
-  printf '{"active":%s,"color":"%s","sound":"%s","trail":"%s","volume":%s}\n' "$active" \
-    "$(cat "$STATE/color" 2>/dev/null || echo theme)" "$(cat "$STATE/sound-mode" 2>/dev/null || echo all)" \
+  local active=false mode eff; [[ -f $STATE/active ]] && active=true
+  mode=$(color_mode)
+  eff=theme; [[ $mode != theme ]] && eff=$(effective_color)
+  printf '{"active":%s,"mode":"%s","color":"%s","custom":"%s","random":"%s","sound":"%s","trail":"%s","volume":%s}\n' "$active" \
+    "$mode" "$eff" "$(cat "$STATE/color" 2>/dev/null || true)" "$(cat "$STATE/random-color" 2>/dev/null || true)" \
+    "$(cat "$STATE/sound-mode" 2>/dev/null || echo all)" \
     "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" "$(cat "$STATE/volume" 2>/dev/null || echo 55)"
 }
 
@@ -167,7 +245,7 @@ cmd_status() {
   echo "glow:     ${glow:-not installed}"
   echo "sound:    $(cat "$STATE/sound-mode" 2>/dev/null || echo all)"
   echo "trail:    $(cat "$STATE/trail-mode" 2>/dev/null || echo on)"
-  echo "color:    $(cat "$STATE/color" 2>/dev/null || echo "theme accent")"
+  echo "color:    $(color_mode) ($(effective_color))"
   echo "volume:   $(cat "$STATE/volume" 2>/dev/null || echo 55)"
   local d n
   for d in ignite off clash; do
@@ -183,6 +261,7 @@ case "${1:-}" in
   sound)  shift; cmd_sound "$@" ;;
   trail)  shift; cmd_trail "$@" ;;
   color)  shift; cmd_color "$@" ;;
+  random) cmd_random ;;
   volume) shift; cmd_volume "$@" ;;
   config) cmd_config ;;
   status) cmd_status ;;

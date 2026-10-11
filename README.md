@@ -13,7 +13,7 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), sound mode and volume, drag trail and on/off switches. No terminal needed.
-- Pick your own glow color instead of following the theme accent (optional; off by default).
+- Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
 - Optional sounds (bring your own clips): ignite after a 0.3 s hold, off on release, a clash on double-click. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
@@ -70,7 +70,9 @@ kyber apply        # rebuild in the current accent and switch to it
 kyber off          # back to Adwaita (the glow stops too)
 kyber sound        # cycle sound mode: all -> ignite -> mute
 kyber trail        # toggle the drag trail (or `kyber trail on` / `kyber trail off`)
-kyber color #ff7a00 # your own color for the whole cursor (or: kyber color theme)
+kyber color theme|custom|random   # where the glow color comes from
+kyber color #ff7a00   # a color of your own (switches to custom)
+kyber random       # roll a new random color now (switches to random)
 kyber volume 40    # sound volume, 0-100
 kyber config       # every setting as one line of JSON
 kyber status

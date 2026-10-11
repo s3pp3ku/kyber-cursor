@@ -37,9 +37,10 @@ BarWidget {
     var prev = root.lastSettings
     root.lastSettings = JSON.parse(JSON.stringify(s))
     if (prev === null) return
+    if (s.colorMode !== prev.colorMode && s.colorMode) act("color " + Util.shellQuote(String(s.colorMode)))
     if (s.color !== prev.color) {
       var c = String(s.color || "").trim()
-      act("color " + Util.shellQuote(c === "" ? "theme" : c))
+      if (/^#?[0-9a-fA-F]{6}$/.test(c)) act("color " + Util.shellQuote(c))
     }
     if (s.sound !== prev.sound && s.sound) act("sound " + Util.shellQuote(String(s.sound)))
     if (s.trail !== prev.trail) act("trail " + (s.trail === false ? "off" : "on"))
@@ -100,7 +101,8 @@ BarWidget {
     activeColor: root.customColor ? String(root.cfg.color) : "#a78bfa"
     dimmed: root.cfg.active !== true
     tooltipText: "Kyber cursor: " + (root.cfg.active === true ? "on" : "off")
-      + "\nGlow color: " + (root.customColor ? root.cfg.color : "follows the theme")
+      + "\nGlow color: " + (root.cfg.mode === "random" ? "random " + root.cfg.color
+        : (root.customColor ? root.cfg.color : "follows the theme"))
       + "\nSound: " + root.cfg.sound + " (volume " + root.cfg.volume + ")"
       + "\nDrag trail: " + root.cfg.trail
       + "\nLeft click: options · Middle: sound · Right: on/off"

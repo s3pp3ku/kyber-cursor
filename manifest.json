@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.s3pp3ku.kyber-cursor",
   "name": "Kyber Cursor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "s3pp3ku",
   "license": "MIT",
   "description": "A glowing blade-and-hilt mouse pointer in your theme's accent color that ignites when you hold a button: glow, crossguard beams, a drag trail and optional sounds.",
@@ -25,14 +25,27 @@
       "color": "",
       "sound": "all",
       "trail": true,
-      "volume": 55
+      "volume": 55,
+      "colorMode": "theme"
     },
     "schema": [
       {
+        "key": "colorMode",
+        "type": "enum",
+        "label": "Glow color source",
+        "options": [
+          "theme",
+          "custom",
+          "random"
+        ],
+        "defaultValue": "theme",
+        "description": "theme: follow the Omarchy accent; custom: your own color; random: a new vivid color at each theme change and boot."
+      },
+      {
         "key": "color",
         "type": "string",
-        "label": "Glow color",
-        "description": "A hex color such as #ff7a00. Leave blank to follow the theme accent.",
+        "label": "Custom glow color",
+        "description": "A hex color such as #ff7a00. Setting one switches the source to custom.",
         "defaultValue": ""
       },
       {

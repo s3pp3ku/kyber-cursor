@@ -22,14 +22,25 @@ Panel {
   readonly property string fontFam: bar ? bar.fontFamily : Style.font.family
   readonly property var cfg: hostWidget ? hostWidget.cfg : ({ active: false, color: "theme", sound: "all", trail: "on", volume: 55 })
   readonly property bool customColor: /^#[0-9a-fA-F]{6}$/.test(String(cfg.color))
+  // where the glow color comes from: theme | custom | random
+  readonly property string mode: cfg.mode ? String(cfg.mode) : (customColor ? "custom" : "theme")
 
   // the colour being picked, as hue / saturation / brightness (all 0..1)
   property real hue: 0.75
   property real sat: 0.60
   property real val: 0.95
   readonly property string pickedHex: hsvToHex(hue, sat, val)
+  // the color actually in use (or about to be), for the swatch, icon and switches
+  readonly property string shownHex: mode === "custom" ? pickedHex
+    : (mode === "random" && /^#[0-9a-fA-F]{6}$/.test(String(cfg.random)) ? String(cfg.random) : colorToHex(Color.accent))
 
   readonly property var presets: ["#ff4d5a", "#ff7a00", "#f5c518", "#3cbf5c", "#26bbd9", "#5a82c8", "#b87bfd", "#ff6ec7"]
+
+  function colorToHex(c) {
+    function hx(x) { var n = Math.round(x * 255).toString(16); return n.length < 2 ? "0" + n : n }
+    var q = Qt.color(c)
+    return "#" + hx(q.r) + hx(q.g) + hx(q.b)
+  }
 
   function hsvToHex(h, s, v) {
     var i = Math.floor(h * 6) % 6, f = h * 6 - Math.floor(h * 6)
@@ -55,9 +66,11 @@ Panel {
   }
 
   function syncFromConfig() {
-    if (customColor) setFromHex(String(cfg.color))
-    else setFromHex(Qt.colorEqual(Color.accent, "transparent") ? "#b87bfd" : String(Color.accent).replace(/^#ff/, "#").substr(0, 7))
+    var saved = /^#[0-9a-fA-F]{6}$/.test(String(cfg.custom)) ? String(cfg.custom) : colorToHex(Color.accent)
+    setFromHex(saved)
   }
+  // follow changes made elsewhere (the terminal, a keybind), but never while a drag is settling
+  onCfgChanged: if (!applyTimer.running) syncFromConfig()
 
   // Rebuilding the cursor takes about a second, so apply when the user pauses
   // instead of on every pixel of a drag.
@@ -139,7 +152,7 @@ Panel {
           width: parent.width
           title: "Kyber Cursor"
           meta: root.cfg.active === true ? "ON" : "OFF"
-          detail: root.customColor ? String(root.cfg.color).toUpperCase() : "THEME"
+          detail: root.mode === "theme" ? "THEME" : (root.mode === "random" ? "RANDOM" : "CUSTOM")
           foreground: root.fg
           fontFamily: root.fontFam
           iconComponent: Component {
@@ -160,59 +173,86 @@ Panel {
 
         PanelSectionHeader { text: "GLOW COLOR"; foreground: root.fg; fontFamily: root.fontFam; font.letterSpacing: 1 }
 
+        // three sources for the glow color
+        Row {
+          spacing: Style.spacing.sm
+          Repeater {
+            model: [{ k: "theme", t: "Theme" }, { k: "custom", t: "Custom" }, { k: "random", t: "Random" }]
+            Rectangle {
+              width: Style.space(96); height: Style.space(30); radius: Style.space(6)
+              color: root.mode === modelData.k ? root.shownHex : "transparent"
+              border.width: 1; border.color: root.fg
+              Label { anchors.centerIn: parent; text: modelData.t
+                color: root.mode === modelData.k ? "#000000" : root.fg }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                onClicked: { applyTimer.stop(); root.act("color " + modelData.k) } }
+            }
+          }
+        }
+
         Row {
           spacing: Style.spacing.lg
           width: parent.width
           Rectangle {
             width: Style.space(44); height: Style.space(44); radius: Style.space(8)
-            color: root.pickedHex; border.width: 2; border.color: root.fg
+            color: root.shownHex; border.width: 2; border.color: root.fg
           }
           Column {
             anchors.verticalCenter: parent.verticalCenter
-            Label { text: root.pickedHex.toUpperCase(); font.pixelSize: Style.font.title }
-            Label { text: root.customColor && root.cfg.color === root.pickedHex ? "in use" : "drag a bar to change"; opacity: 0.6; font.pixelSize: Style.font.caption }
-          }
-        }
-
-        Label { text: "Color"; opacity: 0.7; font.pixelSize: Style.font.caption }
-        ColorBar {
-          width: parent.width; value: root.hue
-          colorAt: function(t) { return root.hsvToHex(t, 1, 1) }
-          onMoved: function(v) { root.hue = Math.min(v, 0.999); root.picked() }
-        }
-        Label { text: "Vividness"; opacity: 0.7; font.pixelSize: Style.font.caption }
-        ColorBar {
-          width: parent.width; value: root.sat
-          colorAt: function(t) { return root.hsvToHex(root.hue, t, root.val) }
-          onMoved: function(v) { root.sat = v; root.picked() }
-        }
-        Label { text: "Brightness"; opacity: 0.7; font.pixelSize: Style.font.caption }
-        ColorBar {
-          width: parent.width; value: root.val
-          colorAt: function(t) { return root.hsvToHex(root.hue, root.sat, t) }
-          onMoved: function(v) { root.val = v; root.picked() }
-        }
-
-        Row {
-          spacing: Style.spacing.sm
-          Repeater {
-            model: root.presets
-            Rectangle {
-              width: Style.space(26); height: Style.space(26); radius: Style.space(6)
-              color: modelData; border.width: 1; border.color: root.fg
-              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                onClicked: { root.setFromHex(modelData); root.picked() } }
+            Label { text: root.shownHex.toUpperCase(); font.pixelSize: Style.font.title }
+            Label {
+              opacity: 0.6; font.pixelSize: Style.font.caption
+              text: root.mode === "theme" ? "follows the theme accent"
+                  : (root.mode === "random" ? "new color at each theme change and boot" : "drag a bar to change")
             }
           }
         }
 
+        // random: roll on demand
         Rectangle {
-          width: parent.width; height: Style.space(32); radius: Style.space(6)
+          visible: root.mode === "random"
+          width: parent.width; height: Style.space(34); radius: Style.space(6)
           color: "transparent"; border.width: 1; border.color: root.fg
-          opacity: root.customColor ? 1 : 0.5
-          Label { anchors.centerIn: parent; text: root.customColor ? "Use the theme accent again" : "Following the theme accent" }
-          MouseArea { anchors.fill: parent; enabled: root.customColor; cursorShape: Qt.PointingHandCursor
-            onClicked: { applyTimer.stop(); root.act("color theme"); root.syncFromConfig() } }
+          Label { anchors.centerIn: parent; text: "Roll a new color" }
+          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.act("random") }
+        }
+
+        // custom: the picker
+        Column {
+          visible: root.mode === "custom"
+          width: parent.width
+          spacing: Style.spacing.xl
+
+          Label { text: "Color"; opacity: 0.7; font.pixelSize: Style.font.caption }
+          ColorBar {
+            width: parent.width; value: root.hue
+            colorAt: function(t) { return root.hsvToHex(t, 1, 1) }
+            onMoved: function(v) { root.hue = Math.min(v, 0.999); root.picked() }
+          }
+          Label { text: "Vividness"; opacity: 0.7; font.pixelSize: Style.font.caption }
+          ColorBar {
+            width: parent.width; value: root.sat
+            colorAt: function(t) { return root.hsvToHex(root.hue, t, root.val) }
+            onMoved: function(v) { root.sat = v; root.picked() }
+          }
+          Label { text: "Brightness"; opacity: 0.7; font.pixelSize: Style.font.caption }
+          ColorBar {
+            width: parent.width; value: root.val
+            colorAt: function(t) { return root.hsvToHex(root.hue, root.sat, t) }
+            onMoved: function(v) { root.val = v; root.picked() }
+          }
+          Row {
+            spacing: Style.spacing.sm
+            Repeater {
+              model: root.presets
+              Rectangle {
+                width: Style.space(26); height: Style.space(26); radius: Style.space(6)
+                color: modelData; border.width: 1; border.color: root.fg
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                  onClicked: { root.setFromHex(modelData); root.picked() } }
+              }
+            }
+          }
         }
 
         PanelSeparator { foreground: root.fg }
@@ -224,7 +264,7 @@ Panel {
             model: [{ k: "all", t: "All" }, { k: "ignite", t: "Ignite only" }, { k: "mute", t: "Mute" }]
             Rectangle {
               width: Style.space(96); height: Style.space(30); radius: Style.space(6)
-              color: root.cfg.sound === modelData.k ? root.pickedHex : "transparent"
+              color: root.cfg.sound === modelData.k ? root.shownHex : "transparent"
               border.width: 1; border.color: root.fg
               Label { anchors.centerIn: parent; text: modelData.t
                 color: root.cfg.sound === modelData.k ? "#000000" : root.fg }
@@ -255,7 +295,7 @@ Panel {
           ToggleSwitch {
             id: trailSwitch
             checked: root.cfg.trail === "on"
-            accent: root.pickedHex
+            accent: root.shownHex
             onToggled: root.act("trail " + (root.cfg.trail === "on" ? "off" : "on"))
           }
         }
@@ -265,7 +305,7 @@ Panel {
           ToggleSwitch {
             id: activeSwitch
             checked: root.cfg.active === true
-            accent: root.pickedHex
+            accent: root.shownHex
             onToggled: root.act(root.cfg.active === true ? "off" : "apply")
           }
         }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+- Glow color has three sources: Theme, Custom and Random, as three buttons in the popup (`kyber color theme|custom|random`, `kyber random`).
+- Random picks only vivid, bright colors, a clearly different hue each time, and re-rolls on a theme change or at boot, never on a shell reload or plugin update.
+- Settings from 1.1.0 carry over unchanged.
+
 ## 1.1.0
 - Bar button with an options popup: color picker, sound mode, volume, drag trail and on/off.
 - Custom glow color (`kyber color`), sound volume (`kyber volume`) and `kyber config`.
