@@ -6,7 +6,8 @@ import Quickshell.Io
 // recoloring on each `omarchy theme set` and at boot comes from the hooks that
 // ./install.sh adds (opt-in); the click glow is a systemd user service that
 // install.sh also adds. Nothing here runs a build unless Kyber was
-// already applied once (`kyber apply`).
+// already applied once (`kyber apply`). It also restarts the glow helper, so
+// an updated plugin never keeps running its old code.
 Item {
   id: root
 
@@ -18,7 +19,8 @@ Item {
     id: applyProcess
     running: false
     command: ["bash", "-c",
-      "[ -f \"${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor/active\" ] && exec '" + root.pluginDir + "bin/kyber' apply || true"
+      "if [ -f \"${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor/active\" ]; then '" + root.pluginDir + "bin/kyber' apply; "
+      + "systemctl --user try-restart kyber-ignite.service; fi"
     ]
     stdout: StdioCollector { onStreamFinished: if (text) console.log("kyber-cursor:", text.trim()) }
     stderr: StdioCollector { onStreamFinished: if (text) console.warn("kyber-cursor:", text.trim()) }
