@@ -89,4 +89,4 @@ Constants at the top of `lib/ignite-listener` (pulse, trail, timings, volume) an
 ## License
 MIT.
 
-*Kyber Cursor is an independent fan project and isn't affiliated with or endorsed by Lucasfilm or Disney. It bundles no film audio or artwork.*
+*Kyber Cursor is an independent, fan-made project created with the help of AI tools. It is not affiliated with or endorsed by the Mouse, and it bundles no film audio or artwork.*
