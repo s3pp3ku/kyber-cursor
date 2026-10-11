@@ -95,7 +95,7 @@ No clips are bundled. Put `.wav` / `.mp3` / `.ogg` files in:
 | `~/.config/kyber-cursor/sounds/off/` | the button is released after an ignite sound |
 | `~/.config/kyber-cursor/sounds/clash/` | you double-click (a clip named `2-...` plays once; any other clip plays twice) |
 
-Empty folders mean silence. Clips play through `pw-play` at 55% volume (`SOUND_VOLUME` in `lib/ignite-listener`). Use clips you have the right to use.
+Empty folders mean silence. Clips play through `pw-play`. The volume (`kyber volume 0-100`, default 55, or the slider in the popup) uses the same curved scale as system volume sliders, so the percentage matches how loud it sounds. Use clips you have the right to use.
 
 ## How it works, and its limits
 On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.
