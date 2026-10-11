@@ -1,6 +1,6 @@
 # Kyber Cursor
 
-A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a very famous space opera. Kyber is the crystal that gives that blade its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites: a brighter blade, two crossguard beams, a glow that pulses, and a fading light trail when you drag. Optional sound effects.
+A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a very famous space opera. Kyber is the crystal that gives that blade its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites with a brighter blade, two crossguard beams and a pulsing glow, plus a fading light trail when you drag. Sound effects are optional.
 
 ![Kyber igniting on click-and-hold, with the drag trail](media/demo.gif)
 
@@ -16,13 +16,13 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
 ## Requirements
-Hyprland (0.56 tested) on Omarchy, plus (Arch):
+Hyprland (0.56 tested) on Omarchy, plus these packages (Arch names):
 
 ```
 sudo pacman -S --needed python-gobject python-cairo python-pillow python-cairosvg python-evdev gtk4 gtk4-layer-shell grim pipewire
 ```
 
-and membership in the `input` group (the click glow reads mouse-button events from `/dev/input`; see Safety):
+You also need to be in the `input` group, because the click glow reads mouse-button events from `/dev/input` (see Safety):
 
 ```
 sudo usermod -aG input "$USER"    # then reboot
@@ -40,19 +40,19 @@ omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
 4. creates empty sound folders under `~/.config/kyber-cursor/sounds/`
 5. builds and applies the cursor
 
-Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. No sudo, no network at install or run time.
+Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. The installer itself uses no sudo and no network, and the plugin needs neither at run time.
 
 ## Use
 ```
 kyber apply        # rebuild in the current accent and switch to it
 kyber off          # back to Adwaita (the glow stops too)
 kyber sound        # cycle sound mode: all -> ignite -> mute
-kyber trail        # toggle the drag trail (or: trail on / trail off)
+kyber trail        # toggle the drag trail (or `kyber trail on` / `kyber trail off`)
 kyber status
 ```
 Bind the sound and trail toggles to keys if you like. In Omarchy's Lua bindings (`~/.config/hypr/bindings.lua`):
 ```lua
-o.bind("F10", "Cycle saber sound", "kyber sound")
+o.bind("F10", "Cycle Kyber sound", "kyber sound")
 o.bind("F11", "Toggle drag trail", "kyber trail")
 ```
 
@@ -63,23 +63,23 @@ No clips are bundled. Put `.wav` / `.mp3` / `.ogg` files in:
 |---|---|
 | `~/.config/kyber-cursor/sounds/ignite/` | a button is held longer than 0.3 s (random clip) |
 | `~/.config/kyber-cursor/sounds/off/` | the button is released after an ignite sound |
-| `~/.config/kyber-cursor/sounds/clash/` | double-click. A clip named `2-...` is played once, any other clip is played twice |
+| `~/.config/kyber-cursor/sounds/clash/` | you double-click (a clip named `2-...` plays once; any other clip plays twice) |
 
 Empty folders mean silence. Clips play through `pw-play` at 55% volume (`SOUND_VOLUME` in `lib/ignite-listener`). Use clips you have the right to use.
 
 ## How it works, and its limits
-On Hyprland 0.56 `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.
+On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.
 
 - The glow and trail are made for dark and mid-tone backgrounds. On very light pages they are subtler (a defined but faint halo), so they don't look like the demo there.
 - The overlay doesn't know the current cursor shape, so the glow also appears around an I-beam during a text drag.
-- Right after a theme switch the rebuild takes 1-2 s, so the old color shows briefly.
-- The glow only follows the cursor's logical position. On very unusual scaling setups the overlay can be slightly off; set `CURSOR_OVERLAY_SCALE` (e.g. `1.05`) in the service environment to fine-tune.
+- Right after a theme switch, the rebuild takes 1-2 s, so the old color shows briefly.
+- The glow only follows the cursor's logical position. On unusual scaling setups the overlay can be slightly off; set `CURSOR_OVERLAY_SCALE` (e.g. `1.05`) in the service environment to fine-tune.
 - Tested on one machine (Hyprland 0.56, 1.6x scaling). Reports from other setups are welcome.
 
 ## Safety
 - The listener opens `/dev/input/event*` **read-only and without grabbing** them (no `EVIOCGRAB`), so clicks still reach Hyprland and apps unchanged. It counts button presses only: no keys, no coordinates from the device, no network.
 - The overlay can never take a click (empty input region).
-- It reads a 20x20 pixel patch of your screen next to the cursor, via `grim`, on each press to pick the dark or light glow. It is averaged to one brightness number in memory and never saved or sent anywhere.
+- It reads a 20x20 pixel patch of your screen next to the cursor, via `grim`, on each press to choose the dark or light glow. The patch is averaged to a single brightness number in memory and is never saved or sent anywhere.
 - The service runs with `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only`.
 - The `input` group lets any program you run read raw input events from all your input devices (including keyboards). Only add yourself if you accept that.
 
