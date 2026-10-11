@@ -2,6 +2,10 @@
 
 A mouse pointer for Omarchy / Hyprland inspired by the lightsaber from Star Wars, the iconic weapon of a very famous space opera. Kyber is the crystal that gives a saber its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites: a brighter blade, two crossguard beams, a glow that pulses, and a fading light trail when you drag. Optional sound effects.
 
+![Kyber igniting on click-and-hold, with the drag trail](media/demo.gif)
+
+[Watch with sound (mp4)](media/demo.mp4) · every cursor role:
+
 ![All cursor roles](preview.png)
 
 ## Features
@@ -66,6 +70,7 @@ Empty folders mean silence. Clips play through `pw-play` at 55% volume (`SOUND_V
 ## How it works, and its limits
 On Hyprland 0.56 `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.
 
+- The glow and trail are made for dark and mid-tone backgrounds. On very light pages they are subtler (a defined but faint halo), so they don't look like the demo there.
 - The overlay doesn't know the current cursor shape, so the glow also appears around an I-beam during a text drag.
 - Right after a theme switch the rebuild takes 1-2 s, so the old color shows briefly.
 - The glow only follows the cursor's logical position. On very unusual scaling setups the overlay can be slightly off; set `CURSOR_OVERLAY_SCALE` (e.g. `1.05`) in the service environment to fine-tune.
