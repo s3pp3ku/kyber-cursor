@@ -11,7 +11,8 @@ parts — the edge strip, the hilt strip, the crossguard beams — which are
 also rendered on their own, Gaussian-blurred, and composited underneath as
 real bloom rather than faked with thick strokes.
 """
-import argparse, io, json, math, re, struct, tomllib
+import argparse, io, json, math, multiprocessing, os, re, struct, tomllib
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from PIL import Image, ImageFilter
 import cairosvg
@@ -508,34 +509,66 @@ def xcursor(frames):
         blob.extend(c)
     return bytes(blob)
 
-def write_theme(name, label, accent, glow, lit, out):
+def _role_blob(lit, role, accent, glow):
+    """One cursor role, all sizes, as xcursor bytes. Runs in a worker process."""
+    kind, hot = SHAPES[role]
+    frames = []
+    for size in SIZES:
+        px = round(size * SCALE)
+        img = rasterize(kind, accent, glow, lit, px)
+        hx = round((hot[0] - VIEW[0]) / VIEW[2] * px)
+        hy = round((hot[1] - VIEW[1]) / VIEW[3] * px)
+        frames.append((size, hx, hy, img))
+    return role, xcursor(frames)
+
+def _write_theme_files(name, label, blobs, out):
     theme = out / name
     (theme / 'cursors').mkdir(parents=True, exist_ok=True)
     (theme / 'index.theme').write_text(f'[Icon Theme]\nName={label}\nComment=Omarchy accent-adaptive Kyber cursor theme\nInherits=Adwaita\n')
-    for role, (kind, hot) in SHAPES.items():
-        frames = []
-        for size in SIZES:
-            px = round(size * SCALE)
-            img = rasterize(kind, accent, glow, lit, px)
-            hx = round((hot[0] - VIEW[0]) / VIEW[2] * px)
-            hy = round((hot[1] - VIEW[1]) / VIEW[3] * px)
-            frames.append((size, hx, hy, img))
+    for role in SHAPES:
         names = ALIASES[role]
-        (theme / 'cursors' / names[0]).write_bytes(xcursor(frames))
+        (theme / 'cursors' / names[0]).write_bytes(blobs[role])
         for alias in names[1:]:
             dest = theme / 'cursors' / alias
             if dest.exists() or dest.is_symlink():
                 dest.unlink()
             dest.symlink_to(names[0])
 
+def write_theme(name, label, accent, glow, lit, out):
+    """Sequential version (also the fallback when processes are unavailable)."""
+    blobs = dict(_role_blob(lit, role, accent, glow) for role in SHAPES)
+    _write_theme_files(name, label, blobs, out)
+
+def _build_parallel(accent, glow, out, workers):
+    # fork: the workers inherit this module as it is, nothing to re-import
+    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context('fork')) as pool:
+        ign = out / (THEME + '-Ignited')
+        ign.mkdir(parents=True, exist_ok=True)
+        overlay = pool.submit(write_overlay, glow, ign)      # runs alongside the shapes
+        futs = {(lit, role): pool.submit(_role_blob, lit, role, accent, glow)
+                for lit in (False, True) for role in SHAPES}
+        for lit, name, label in ((False, THEME, 'Omarchy Kyber'), (True, THEME + '-Ignited', 'Omarchy Kyber Ignited')):
+            blobs = dict(futs[(lit, role)].result() for role in SHAPES)
+            _write_theme_files(name, label, blobs, out)
+        overlay.result()
+
 def build(accent, out):
     accent = accent.lower()
     if not re.fullmatch(r'#[0-9a-f]{6}', accent):
         raise ValueError('use an RGB hex value such as #7aa2f7')
     glow = IGNITE_COLOR or accent
-    write_theme(THEME, 'Omarchy Kyber', accent, glow, False, out)
-    write_theme(THEME + '-Ignited', 'Omarchy Kyber Ignited', accent, glow, True, out)
-    write_overlay(glow, out / (THEME + '-Ignited'))
+    workers = min(os.cpu_count() or 1, 8)
+    done = False
+    if workers > 1:
+        try:
+            _build_parallel(accent, glow, out, workers)
+            done = True
+        except Exception:
+            pass   # no fork, a worker died, ...: just do it one step at a time
+    if not done:
+        write_theme(THEME, 'Omarchy Kyber', accent, glow, False, out)
+        write_theme(THEME + '-Ignited', 'Omarchy Kyber Ignited', accent, glow, True, out)
+        write_overlay(glow, out / (THEME + '-Ignited'))
     print(f'Built {THEME} + {THEME}-Ignited ({len(SHAPES)} roles) with accent {accent}')
 
 def preview(accent, path):

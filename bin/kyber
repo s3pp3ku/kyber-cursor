@@ -67,11 +67,9 @@ color_mode() {
 }
 
 # A random color that always glows well: vivid and bright, and a clearly
-# different hue from the last one.
-roll_color() {
-  local prev tmp; prev=$(cat "$STATE/random-color" 2>/dev/null || true)
-  tmp=$(mktemp)
-  /usr/bin/python3 - "$prev" > "$tmp" <<'PY'
+# different hue from the previous one ($1).
+pick_random() {
+  /usr/bin/python3 - "${1:-}" <<'PY'
 import colorsys, random, sys
 prev = sys.argv[1]
 ph = None
@@ -87,8 +85,44 @@ while True:
 r, g, b = colorsys.hsv_to_rgb(h, random.uniform(0.65, 0.95), random.uniform(0.85, 1.0))
 print('#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255)))
 PY
-  if [[ $(cat "$tmp") =~ ^#[0-9a-f]{6}$ ]]; then mv "$tmp" "$STATE/random-color"; else rm -f "$tmp"; fi
+}
+
+# Roll the next random color. If a color was already built in the background
+# (prebuild_next), use that one: applying it is then just a swap.
+roll_color() {
+  local prev nxt; prev=$(cat "$STATE/random-color" 2>/dev/null || true)
+  nxt=$(cat "$STATE/random-next" 2>/dev/null || true)
+  if [[ ! $nxt =~ ^#[0-9a-f]{6}$ || ! -f $BUILDS/next/${nxt#\#}/.recipe || $nxt == "$prev" ]]; then
+    nxt=$(pick_random "$prev")
+  fi
+  if [[ $nxt =~ ^#[0-9a-f]{6}$ ]]; then printf '%s\n' "$nxt" > "$STATE/random-color"; fi
+  rm -f "$STATE/random-next"
   note_roll_context
+}
+
+# In the background, pick the *next* random color and build it, so the next
+# "Roll a new color" does not wait for a build. One color is kept; a lock stops
+# two builds from overlapping.
+prebuild_next() {
+  (
+    flock -n 9 || exit 0
+    local cur nxt tmp recipe
+    cur=$(cat "$STATE/random-color" 2>/dev/null || true)
+    nxt=$(pick_random "$cur")
+    [[ $nxt =~ ^#[0-9a-f]{6}$ ]] || exit 0
+    recipe=$(cat "$PLUGIN_DIR/lib/build.py" | sha256sum | cut -d' ' -f1)
+    mkdir -p "$BUILDS/next"
+    tmp=$(mktemp -d "$BUILDS/next/.tmp.XXXXXX")
+    if ! /usr/bin/python3 "$PLUGIN_DIR/lib/build.py" --accent "$nxt" --output "$tmp" >/dev/null 2>&1; then rm -rf "$tmp"; exit 0; fi
+    printf '%s' "$recipe" > "$tmp/.recipe"
+    local old
+    for old in "$BUILDS/next"/*/; do
+      [[ -d $old ]] && rm -rf "$old"
+    done
+    mv "$tmp" "$BUILDS/next/${nxt#\#}"
+    printf '%s\n' "$nxt" > "$STATE/random-next"
+  ) 9>"$STATE/.prebuild.lock" >/dev/null 2>&1 </dev/null &
+  disown 2>/dev/null || true
 }
 
 # What a roll belongs to: this Omarchy theme in this boot. A new theme or a new
@@ -123,15 +157,21 @@ cmd_apply() {
     if [[ $(<"$existing/.accent") == "${acc,,}" && $(<"$existing/.recipe") == "$recipe" ]]; then cached=$existing; break; fi
   done
   if [[ -z $cached ]]; then
-    local out; out=$(mktemp -d)
-    /usr/bin/python3 "$PLUGIN_DIR/lib/build.py" --accent "$acc" --output "$out" >/dev/null
-    local d
+    local out hex="${acc,,}" pre d
+    hex=${hex#\#}; pre="$BUILDS/next/$hex"
+    if [[ -f $pre/.recipe && $(<"$pre/.recipe") == "$recipe" ]]; then
+      out=$pre                      # built ahead of time in the background: just install it
+    else
+      out=$(mktemp -d)
+      /usr/bin/python3 "$PLUGIN_DIR/lib/build.py" --accent "$acc" --output "$out" >/dev/null
+    fi
     for d in "$out"/*/; do install_theme "$(basename "${d%/}")" "${d%/}" "${acc,,}" "$recipe"; done
     rm -rf "$out"
   fi
   : > "$STATE/active"
   set_cursor "$THEME"
   echo "Kyber applied (accent ${acc,,}, size $SIZE)."
+  if [[ $(color_mode) == random ]]; then prebuild_next; fi
 }
 
 # Hyprland skips reloading when asked for the theme name it already has, so

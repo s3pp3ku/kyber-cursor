@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.2.0
+- Faster color changes: the cursor build runs on several cores (about 2.1 s down to about 0.9 s, byte-identical output), and in Random mode the next color is built in the background, so "Roll a new color" just swaps it in (about 0.13 s).
 - The sound volume now follows a perceptual (cubic) curve. Before, a low setting such as 18% was still loud, because the percentage was a plain amplitude. If you set a volume in 1.1.0, raise it (about 55 gives what 18 used to).
 - Glow color has three sources: Theme, Custom and Random, as three buttons in the popup (`kyber color theme|custom|random`, `kyber random`).
 - Random picks only vivid, bright colors, a clearly different hue each time, and re-rolls on a theme change or at boot, never on a shell reload or plugin update.
