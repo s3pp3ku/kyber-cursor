@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# kyber: build, apply and control the Kyber cursor.
+#
+#   kyber apply          build the cursor in the current Omarchy accent and switch to it
+#   kyber off            go back to the Adwaita cursor (the glow stops too)
+#   kyber sound [mode]   all | ignite | mute | cycle (default: cycle)
+#   kyber trail [on|off]  the drag trail (default: toggle)
+#   kyber status         what is installed and running
+set -euo pipefail
+
+PLUGIN_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+THEME=Omarchy-Kyber
+SIZE="${HYPRCURSOR_SIZE:-${XCURSOR_SIZE:-24}}"
+ICONS="$HOME/.local/share/icons"
+BUILDS="$ICONS/.kyber-builds"
+STATE="${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor"
+
+accent() {
+  /usr/bin/python3 - <<'PY' 2>/dev/null || true
+import tomllib
+from pathlib import Path
+for p in (Path.home() / '.local/state/omarchy/current/theme/colors.toml',
+          Path.home() / '.config/omarchy/current/theme/colors.toml'):
+    if p.is_file():
+        try:
+            print(tomllib.loads(p.read_text()).get('accent', ''))
+            break
+        except Exception:
+            pass
+PY
+}
+
+# Install a built theme directory under $ICONS atomically: build into a
+# throwaway directory, then repoint a symlink (one rename()), so a cursor
+# reload never reads a half-written theme.
+install_theme() {
+  local name=$1 src=$2 acc=$3 recipe=$4
+  local target="$BUILDS/$name.$$.$(date +%s%N)"
+  cp -a "$src" "$target"
+  printf '%s' "$acc" > "$target/.accent"
+  printf '%s' "$recipe" > "$target/.recipe"
+  if [[ -d $ICONS/$name && ! -L $ICONS/$name ]]; then
+    mv -T "$ICONS/$name" "$BUILDS/$name.previous"
+  fi
+  ln -sfn "$target" "$ICONS/.$name.link.$$"
+  mv -T "$ICONS/.$name.link.$$" "$ICONS/$name"
+  local old
+  for old in "$BUILDS/$name".*; do
+    if [[ -e $old && $old != "$target" ]]; then rm -rf "$old"; fi
+  done
+  return 0
+}
+
+cmd_apply() {
+  local acc recipe cached="" existing
+  acc=$(accent)
+  [[ $acc =~ ^#[0-9a-fA-F]{6}$ ]] || acc="#7aa2f7"   # no Omarchy theme found: a neutral blue
+  recipe=$(cat "$PLUGIN_DIR/lib/build.py" | sha256sum | cut -d' ' -f1)
+  mkdir -p "$ICONS" "$BUILDS" "$STATE"
+  for existing in "$BUILDS/$THEME".*; do
+    [[ -f $existing/.accent && -f $existing/.recipe ]] || continue
+    if [[ $(<"$existing/.accent") == "${acc,,}" && $(<"$existing/.recipe") == "$recipe" ]]; then cached=$existing; break; fi
+  done
+  if [[ -z $cached ]]; then
+    local out; out=$(mktemp -d)
+    /usr/bin/python3 "$PLUGIN_DIR/lib/build.py" --accent "$acc" --output "$out" >/dev/null
+    local d
+    for d in "$out"/*/; do install_theme "$(basename "${d%/}")" "${d%/}" "${acc,,}" "$recipe"; done
+    rm -rf "$out"
+  fi
+  : > "$STATE/active"
+  set_cursor "$THEME"
+  echo "Kyber applied (accent ${acc,,}, size $SIZE)."
+}
+
+# Hyprland skips reloading when asked for the theme name it already has, so
+# bounce through another theme first; retry because its cursor reload can stall.
+set_cursor() {
+  local theme=$1 bounce=Adwaita ok=0 i
+  [[ $theme == Adwaita ]] && bounce=Omarchy-Kyber
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl setcursor "$bounce" "$SIZE" >/dev/null 2>&1 || true
+    for i in 1 2 3; do
+      if hyprctl setcursor "$theme" "$SIZE" >/dev/null 2>&1; then ok=1; break; fi
+      sleep 0.4
+    done
+    [[ $ok -eq 1 ]] || echo "Hyprland did not answer; the cursor will update on your next theme switch or re-login." >&2
+  fi
+  if command -v gsettings >/dev/null 2>&1; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$theme" 2>/dev/null || true
+  fi
+}
+
+cmd_off() {
+  rm -f "$STATE/active"
+  set_cursor Adwaita
+  echo "Kyber off: back to the Adwaita cursor."
+}
+
+cmd_sound() {
+  mkdir -p "$STATE"
+  local f="$STATE/sound-mode" cur next
+  cur=$(cat "$f" 2>/dev/null || echo all)
+  case "${1:-cycle}" in
+    all|ignite|mute) next=$1 ;;
+    cycle) case $cur in all) next=ignite ;; ignite) next=mute ;; *) next=all ;; esac ;;
+    *) echo "usage: kyber sound [all|ignite|mute|cycle]" >&2; exit 2 ;;
+  esac
+  echo "$next" > "$f"
+  notify-send -t 1500 "Kyber sound: $next" 2>/dev/null || true
+  echo "$next"
+}
+
+cmd_trail() {
+  mkdir -p "$STATE"
+  local f="$STATE/trail-mode" cur next
+  cur=$(cat "$f" 2>/dev/null || echo on)
+  case "${1:-toggle}" in
+    on|off) next=$1 ;;
+    toggle) [[ $cur == on ]] && next=off || next=on ;;
+    *) echo "usage: kyber trail [on|off|toggle]" >&2; exit 2 ;;
+  esac
+  echo "$next" > "$f"
+  notify-send -t 1500 "Kyber trail: $next" 2>/dev/null || true
+  echo "$next"
+}
+
+cmd_status() {
+  echo "plugin:   $PLUGIN_DIR"
+  echo "cursor:   $([[ -e $ICONS/$THEME ]] && echo "installed" || echo "not built (run: kyber apply)")"
+  echo "active:   $([[ -f $STATE/active ]] && echo yes || echo no)"
+  local glow; glow=$(systemctl --user is-active kyber-ignite.service 2>/dev/null || true)
+  echo "glow:     ${glow:-not installed}"
+  echo "sound:    $(cat "$STATE/sound-mode" 2>/dev/null || echo all)"
+  echo "trail:    $(cat "$STATE/trail-mode" 2>/dev/null || echo on)"
+  local d n
+  for d in ignite off clash; do
+    n=$(find "$STATE/sounds/$d" -maxdepth 1 -type f 2>/dev/null | wc -l || true)
+    echo "  sounds/$d: $n clip(s)"
+  done
+  if id -nG | tr ' ' '\n' | grep -qx input; then echo "input group: yes"; else echo "input group: NO (the click glow needs it, see README)"; fi
+}
+
+case "${1:-}" in
+  apply)  cmd_apply ;;
+  off)    cmd_off ;;
+  sound)  shift; cmd_sound "$@" ;;
+  trail)  shift; cmd_trail "$@" ;;
+  status) cmd_status ;;
+  *) sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z ${1:-} ]] || exit 2 ;;
+esac

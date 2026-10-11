@@ -1,0 +1,544 @@
+#!/usr/bin/python3
+"""
+Kyber: ignites the cursor while a mouse button is held, system-wide.
+
+Why an overlay and not a theme swap: on Hyprland 0.56 `hyprctl setcursor`
+only changes what *future* cursor requests resolve to. The image already on
+screen stays until an app re-requests its cursor (on entering a surface),
+which never happens mid-click. So while a button is held this draws the
+selected theme's light-only overlay art (bright edge, crossguard beams,
+haze) on a click-through overlay layer, lined up under the real cursor.
+The real cursor is never touched, so pointer latency is unchanged; only
+the light follows at the overlay's frame rate.
+
+The art comes from ~/.local/share/icons/<Theme>-Ignited/overlay.json,
+written by lib/build.py (run by `kyber apply`).
+
+Safety:
+  - /dev/input/eventN is opened without EVIOCGRAB: reading evdev
+    non-exclusively consumes nothing, so clicks reach Hyprland and apps
+    exactly as before. This process only observes button state — no
+    coordinates from the device, no keys, no network.
+  - The overlay has an empty input region, so it can never take a click.
+  - Held buttons are counted across all devices, so releasing one of two
+    held buttons doesn't end the effect early.
+
+Needs read access to /dev/input/eventN (the `input` group), and
+LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so (set in the systemd unit).
+"""
+import glob
+import json
+import math
+import os
+import random
+import signal
+import socket
+import subprocess
+import sys
+
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+gi.require_version('Gtk4LayerShell', '1.0')
+from gi.repository import GLib, Gdk, Gtk, Gtk4LayerShell as LayerShell  # noqa: E402
+import cairo  # noqa: E402
+import evdev  # noqa: E402
+from evdev import ecodes  # noqa: E402
+
+STATE = os.path.expanduser('~/.config/kyber-cursor')
+THEME = 'Omarchy-Kyber'
+ICONS = os.path.expanduser('~/.local/share/icons')
+BUTTONS = {ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE}
+HYPR_SOCKET = os.path.join(os.environ.get('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid()),
+                           'hypr', os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', ''), '.socket.sock')
+IGNITE_S = 0.15        # press: beams grow out, haze swells in
+RETRACT_S = 0.11       # release: everything pulls back in
+FADE_UNITS = 3.0       # soft leading edge on a growing beam, in viewBox units
+# Background relative luminance range over which the glow blends to its light-background tint.
+LIGHT_LO, LIGHT_HI = 0.25, 0.60
+HUM_HAZE = 0.55       # how far the haze dims at the bottom of a waver
+HUM_BEAM = 0.22       # beams waver less, so the blades stay crisp
+# Holds longer than this play a random clip from SOUND_DIR/ignite (and a release
+# plays one from SOUND_DIR/off, mode 'all' only); quick clicks stay
+# silent. Swap the clips to change the sound; empty the folder to mute it.
+SOUND_DIR = os.path.join(STATE, 'sounds')
+SOUND_MODE_FILE = os.path.join(STATE, 'sound-mode')
+SOUND_DELAY_MS = 300
+# Two presses closer together than this are a double click: a clash instead of an ignite.
+DOUBLE_CLICK_S = 0.40
+CLASH_GAP_MS = 140
+TRAIL_S = 0.60     # how long a drag's light trail lingers
+TRAIL_ALPHA = 0.9
+TRAIL_UNITS = 7.0  # trail width at the cursor tip, in cursor-art units
+SURGE_S = 0.45    # after the ignite sound starts, the blade holds full brightness this long
+SOUND_VOLUME = '0.55'
+# Fine-tunes the overlay's size if it doesn't line up with the cursor.
+SIZE_FUDGE = float(os.environ.get('CURSOR_OVERLAY_SCALE', '1.0'))
+
+
+def hypr(request):
+    """One request on Hyprland's IPC socket; cheaper than spawning hyprctl."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        s.connect(HYPR_SOCKET)
+        s.sendall(request.encode())
+        chunks = []
+        while True:
+            data = s.recv(65536)
+            if not data:
+                break
+            chunks.append(data)
+    return b''.join(chunks).decode()
+
+
+def cursor_pos():
+    x, y = hypr('cursorpos').split(',')
+    return float(x), float(y)
+
+
+def cursor_size():
+    for var in ('HYPRCURSOR_SIZE', 'XCURSOR_SIZE'):
+        v = os.environ.get(var)
+        if v and v.isdigit():
+            return int(v)
+    return 24
+
+
+def selected_overlay():
+    """([(layer, surface), ...], metadata) for the selected theme's overlay, or None."""
+    # `kyber apply` creates STATE/active and `kyber off` removes it, so the
+    # glow never shows over a different cursor theme.
+    meta_path = os.path.join(ICONS, THEME + '-Ignited', 'overlay.json')
+    if not os.path.isfile(os.path.join(STATE, 'active')) or not os.path.isfile(meta_path):
+        return None
+    key = (meta_path, os.path.getmtime(meta_path))
+    if _cache.get('key') != key:
+        with open(meta_path) as f:
+            meta = json.load(f)
+        folder = os.path.dirname(meta_path)
+        if 'layers' in meta:
+            layers = [(layer, cairo.ImageSurface.create_from_png(os.path.join(folder, layer['image'])))
+                      for layer in meta['layers']]
+        else:  # single flat image: no animation, just fade it in
+            layers = [({'kind': 'haze'}, cairo.ImageSurface.create_from_png(os.path.join(folder, meta['image'])))]
+        for layer in meta.get('light_layers', ()):
+            layers.append(({**layer, 'light': True}, cairo.ImageSurface.create_from_png(os.path.join(folder, layer['image']))))
+        _cache.update(key=key, value=(layers, meta))
+    return _cache['value']
+
+
+_cache = {}
+
+
+def displayed_units_to_logical(meta, monitor_scale):
+    """Logical px per viewBox unit of the cursor as Hyprland actually shows it.
+
+    Hyprland loads Xcursors at size * ceil(scale), takes the nearest nominal
+    size, and shows that bitmap at buffer scale ceil(scale). The theme
+    renders each nominal size at nominal * meta['scale'] pixels, covering
+    meta['view_w'] viewBox units.
+    """
+    load_scale = math.ceil(monitor_scale)
+    want = cursor_size() * load_scale
+    nominal = min(meta['sizes'], key=lambda s: abs(s - want))
+    bitmap_px = round(nominal * meta['scale'])
+    return bitmap_px / load_scale / meta['view_w'] * SIZE_FUDGE
+
+
+def background_luma(x, y):
+    """Mean relative luminance (0..1) of the screen just around the cursor, or None.
+
+    Taken before the overlay appears, so it sees only what is underneath.
+    """
+    try:
+        out = subprocess.run(['grim', '-g', f'{int(x) + 2},{int(y) + 2} 20x20', '-t', 'ppm', '-s', '0.1', '-'],
+                             capture_output=True, timeout=0.3, check=True).stdout
+        # P6 <w> <h> 255 <data>
+        head = out.split(b'\n', 3)
+        data = head[3]
+        n = len(data) // 3
+        if not n:
+            return None
+        def lin(v):
+            v /= 255
+            return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+        r = sum(lin(v) for v in data[0::3]) / n
+        g = sum(lin(v) for v in data[1::3]) / n
+        b = sum(lin(v) for v in data[2::3]) / n
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return None
+
+
+class Overlay:
+    def __init__(self):
+        self.win = Gtk.Window()
+        LayerShell.init_for_window(self.win)
+        LayerShell.set_layer(self.win, LayerShell.Layer.OVERLAY)
+        LayerShell.set_namespace(self.win, 'cursor-ignite')
+        LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
+        LayerShell.set_exclusive_zone(self.win, -1)
+        for edge in (LayerShell.Edge.TOP, LayerShell.Edge.BOTTOM, LayerShell.Edge.LEFT, LayerShell.Edge.RIGHT):
+            LayerShell.set_anchor(self.win, edge, True)
+        css = Gtk.CssProvider()
+        css.load_from_string('window, window * { background: transparent; }')
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.area = Gtk.DrawingArea()
+        self.area.set_draw_func(self.draw)
+        self.win.set_child(self.area)
+        self.win.connect('realize', self.on_realize)
+        self.art = None
+        self.mon = (0.0, 0.0, 1.0)      # monitor x, y, scale
+        self.pos = None
+        self.phase = 'off'              # off -> igniting -> held -> retracting -> off
+        self.p = 0.0                    # ignition progress, 0..1
+        self.t = 0.0
+        self.last_t = None
+        self.ticking = False
+        self.surge_until = 0.0
+        self.trail = []                 # (x, y, t) of the tip while dragging
+        self.trail_on = True
+        self.light = 0.0                # 0 = dark background, 1 = light: blend to the vivid tint
+
+    def on_realize(self, win):
+        # empty input region: clicks always pass through to whatever is below
+        win.get_surface().set_input_region(cairo.Region())
+
+    def place(self):
+        """Pin the overlay to the monitor under the cursor; False if Hyprland didn't answer."""
+        try:
+            x, y = cursor_pos()
+            for m in json.loads(hypr('j/monitors')):
+                mx, my = m['x'], m['y']
+                mw, mh = m['width'] / m['scale'], m['height'] / m['scale']
+                if mx <= x < mx + mw and my <= y < my + mh:
+                    self.mon = (mx, my, m['scale'])
+                    for gm in Gdk.Display.get_default().get_monitors():
+                        if gm.get_connector() == m['name']:
+                            LayerShell.set_monitor(self.win, gm)
+                    break
+            self.pos = (x, y)
+            return True
+        except (OSError, ValueError, KeyError):
+            return False
+
+    def press(self, art):
+        self.art = art
+        self.trail_on = trail_enabled()
+        if self.phase == 'off':
+            if not self.place():
+                return
+            luma = background_luma(*self.pos)
+            self.light = 0.0 if luma is None else max(0.0, min(1.0, (luma - LIGHT_LO) / (LIGHT_HI - LIGHT_LO)))
+            self.win.present()
+            self.last_t = None
+            if not self.ticking:
+                self.area.add_tick_callback(self.on_tick)
+                self.ticking = True
+        self.phase = 'igniting'         # also re-ignites from wherever a retract got to
+
+    def surge(self):
+        self.surge_until = self.t + SURGE_S
+
+    def release(self):
+        if self.phase in ('igniting', 'held'):
+            self.phase = 'retracting'
+
+    def stop(self):
+        self.phase, self.p, self.pos = 'off', 0.0, None
+        self.trail = []
+        self.win.set_visible(False)
+
+    def on_tick(self, widget, clock):
+        # runs once per display frame while the overlay is mapped
+        t = clock.get_frame_time() / 1e6
+        dt = 0.0 if self.last_t is None else min(0.05, t - self.last_t)
+        self.last_t, self.t = t, t
+        if self.phase == 'igniting':
+            self.p = min(1.0, self.p + dt / IGNITE_S)
+            if self.p >= 1.0:
+                self.phase = 'held'
+        elif self.phase == 'retracting':
+            self.p = max(0.0, self.p - dt / RETRACT_S)
+            if self.p <= 0.0 and not self.trail:
+                self.stop()
+                self.ticking = False
+                return GLib.SOURCE_REMOVE
+        elif self.phase == 'off':
+            self.ticking = False
+            return GLib.SOURCE_REMOVE
+        try:
+            self.pos = cursor_pos()
+        except (OSError, ValueError):
+            pass
+        if self.trail_on and self.phase in ('igniting', 'held') and self.pos:
+            if not self.trail or math.hypot(self.pos[0] - self.trail[-1][0], self.pos[1] - self.trail[-1][1]) >= 1.0:
+                self.trail.append((self.pos[0], self.pos[1], t))
+        while self.trail and t - self.trail[0][2] > TRAIL_S:
+            self.trail.pop(0)
+        if self.phase == 'retracting' and self.p <= 0.0 and not self.trail:
+            self.stop()
+            self.ticking = False
+            return GLib.SOURCE_REMOVE
+        self.area.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def hum(self):
+        """Brightness multipliers (haze, beams) for a live blade's waver."""
+        t = self.t
+        if t < self.surge_until:
+            return 1.0, 1.0
+        # mostly a slow swell (~2/s), a quicker undertone, and a faint flicker
+        n = (0.65 * math.sin(2 * math.pi * 2.1 * t) + 0.25 * math.sin(2 * math.pi * 5.3 * t + 1.1)
+             + 0.10 * random.uniform(-1.0, 1.0))
+        n = max(-1.0, min(1.0, n))
+        level = 0.5 + 0.5 * n
+        return 1.0 - HUM_HAZE * level, 1.0 - HUM_BEAM * level
+
+    def draw_trail(self, cr, meta, f):
+        """A fading ribbon of light along where the blade tip has just been."""
+        pts = self.trail
+        if len(pts) < 2:
+            return
+        dark, light = meta.get('trail_rgb', [[1, 1, 1], [1, 1, 1]])
+        rgb = [d * (1 - self.light) + l * self.light for d, l in zip(dark, light)]
+        cr.set_line_cap(cairo.LineCap.ROUND)
+        mx, my = self.mon[0], self.mon[1]
+        for (x0, y0, t0), (x1, y1, t1) in zip(pts, pts[1:]):
+            life = max(0.0, 1.0 - (self.t - t1) / TRAIL_S)      # 1 at the cursor, 0 at the tail
+            if life <= 0.0:
+                continue
+            for scale, strength in ((1.0, 0.35), (0.55, 0.5)):  # soft wide body, brighter core
+                cr.set_source_rgba(*rgb, TRAIL_ALPHA * strength * life ** 1.5)
+                cr.set_line_width(TRAIL_UNITS * f * scale * (0.35 + 0.65 * life))
+                cr.move_to(x0 - mx, y0 - my)
+                cr.line_to(x1 - mx, y1 - my)
+                cr.stroke()
+
+    def draw(self, area, cr, width, height):
+        if not self.art or not self.pos:
+            return
+        layers, meta = self.art
+        self.draw_trail(cr, meta, displayed_units_to_logical(meta, self.mon[2]))
+        if self.p <= 0.0:
+            return
+        f = displayed_units_to_logical(meta, self.mon[2])
+        ppu = meta['px_per_unit']
+        ox_u, oy_u = meta['origin']
+        # where the overlay image's top-left lands, in this surface's coordinates
+        cr.translate(self.pos[0] - self.mon[0] - (meta['hotspot'][0] - ox_u) * f,
+                     self.pos[1] - self.mon[1] - (meta['hotspot'][1] - oy_u) * f)
+        cr.scale(f / ppu, f / ppu)        # from here on: overlay image pixels
+        e = 1.0 - (1.0 - self.p) ** 3     # ease-out: fast start, gentle arrival
+        hum_haze, hum_beam = self.hum()
+        light = self.light if meta.get('light_layers') else 0.0
+
+        def paint(image, alpha, make_mask=None):
+            if make_mask:
+                cr.set_source_surface(image, 0, 0)
+                cr.get_source().set_filter(cairo.FILTER_GOOD)
+                cr.mask(make_mask(alpha))
+            else:
+                cr.set_source_surface(image, 0, 0)
+                cr.get_source().set_filter(cairo.FILTER_GOOD)
+                cr.paint_with_alpha(alpha)
+
+        for layer, image in layers:
+            # two art sets, blended by how light the background is
+            weight = light if layer.get('light') else 1.0 - light
+            if weight <= 0.0:
+                continue
+            if layer['kind'] != 'beam':
+                paint(image, e * hum_haze * weight)
+                continue
+            alpha = hum_beam * min(1.0, e * 3.0) * weight
+            if e >= 0.999:
+                paint(image, alpha)
+                continue
+            # the beam grows from its emitter: visible up to e * length, then
+            # a soft leading edge over FADE_UNITS
+            fx, fy = (layer['from'][0] - ox_u) * ppu, (layer['from'][1] - oy_u) * ppu
+            tx, ty = (layer['to'][0] - ox_u) * ppu, (layer['to'][1] - oy_u) * ppu
+            length = math.hypot(tx - fx, ty - fy) or 1.0
+            dx, dy = (tx - fx) / length, (ty - fy) / length
+            reach, fade = e * length, FADE_UNITS * ppu
+
+            def make_mask(a, fx=fx, fy=fy, dx=dx, dy=dy, reach=reach, fade=fade):
+                mask = cairo.LinearGradient(fx + dx * reach, fy + dy * reach,
+                                            fx + dx * (reach + fade), fy + dy * (reach + fade))
+                mask.add_color_stop_rgba(0, 0, 0, 0, a)
+                mask.add_color_stop_rgba(1, 0, 0, 0, 0)
+                return mask
+            paint(image, alpha, make_mask)
+
+
+def pointer_devices(skip=()):
+    found = []
+    for path in sorted(glob.glob('/dev/input/event*')):
+        if path in skip:
+            continue
+        try:
+            dev = evdev.InputDevice(path)
+        except OSError:
+            continue
+        if ecodes.BTN_LEFT in dev.capabilities().get(ecodes.EV_KEY, []):
+            found.append(dev)
+        else:
+            dev.close()
+    return found
+
+
+TRAIL_MODE_FILE = os.path.join(STATE, 'trail-mode')
+
+
+def trail_enabled():
+    """The drag trail is on unless `trail-mode` says 'off' (set by the trail toggle command)."""
+    try:
+        with open(TRAIL_MODE_FILE) as f:
+            return f.read().strip() != 'off'
+    except OSError:
+        return True
+
+
+def sound_mode():
+    """'all' (ignite + off), 'ignite' or 'mute'; set by omarchy-cursor-sound."""
+    try:
+        with open(SOUND_MODE_FILE) as f:
+            return f.read().strip() or 'all'
+    except OSError:
+        return 'all'
+
+
+def play_clip(folder):
+    d = os.path.join(SOUND_DIR, folder)
+    clips = [os.path.join(d, n) for n in os.listdir(d)
+             if n.lower().endswith(('.wav', '.mp3', '.ogg', '.oga', '.flac'))] if os.path.isdir(d) else []
+    if clips:
+        play_file(random.choice(clips))
+
+
+def play_file(path):
+    try:
+        # spawn_async reaps the child itself; nothing to wait on here
+        GLib.spawn_async(['pw-play', '--volume', SOUND_VOLUME, path],
+                         flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.STDOUT_TO_DEV_NULL
+                         | GLib.SpawnFlags.STDERR_TO_DEV_NULL)
+    except GLib.Error:
+        pass
+
+
+def play_clash():
+    """A double clash: a '2-*' clip already holds two strikes; any other is played twice."""
+    d = os.path.join(SOUND_DIR, 'clash')
+    names = [n for n in os.listdir(d) if n.lower().endswith(('.wav', '.mp3', '.ogg', '.oga', '.flac'))] if os.path.isdir(d) else []
+    if not names:
+        return
+    pick = random.choice(names)
+    play_file(os.path.join(d, pick))
+    if not pick.startswith('2-'):
+        second = random.choice([n for n in names if n != pick and not n.startswith('2-')] or [pick])
+        GLib.timeout_add(CLASH_GAP_MS, lambda: (play_file(os.path.join(d, second)), False)[1])
+
+
+class Listener:
+    def __init__(self, overlay):
+        self.overlay = overlay
+        self.held = 0
+        self.devices = {}
+        self.press_id = 0
+        self.sounded = False
+        self.last_press = 0.0
+        self.double = False
+
+    def sound_if_still_held(self, press_id):
+        if self.held > 0 and press_id == self.press_id and self.overlay.phase != 'off' \
+                and not self.double and sound_mode() != 'mute':
+            self.sounded = True
+            self.overlay.surge()          # the blade flares as the sound starts
+            play_clip('ignite')
+        return False
+
+    def watch(self, dev):
+        self.devices[dev.fd] = dev
+        GLib.unix_fd_add_full(GLib.PRIORITY_HIGH, dev.fd, GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
+                              self.on_input, dev)
+        print('Watching: ' + dev.name.strip(), flush=True)
+
+    def rescan(self):
+        # Bluetooth mice/trackballs connect after login; pick them up.
+        for dev in pointer_devices(skip={d.path for d in self.devices.values()}):
+            self.watch(dev)
+        return True
+
+    def on_input(self, fd, condition, dev):
+        try:
+            events = list(dev.read())
+        except OSError:
+            self.devices.pop(fd, None)
+            return False  # unplugged; stop watching this fd
+        for ev in events:
+            if ev.type != ecodes.EV_KEY or ev.code not in BUTTONS or ev.value == 2:
+                continue
+            before = self.held
+            self.held = self.held + 1 if ev.value == 1 else max(0, self.held - 1)
+            if before == 0 and self.held > 0:
+                art = selected_overlay()
+                if art:
+                    self.overlay.press(art)
+                    self.press_id += 1
+                    self.sounded = False
+                    now = GLib.get_monotonic_time() / 1e6
+                    self.double = 0 < now - self.last_press < DOUBLE_CLICK_S
+                    self.last_press = 0.0 if self.double else now
+                    if self.double and sound_mode() == 'all':
+                        play_clash()
+                    GLib.timeout_add(SOUND_DELAY_MS, self.sound_if_still_held, self.press_id)
+                    print('ignite', flush=True)
+            elif before > 0 and self.held == 0 and self.overlay.phase != 'off':
+                self.overlay.release()
+                if self.sounded and sound_mode() == 'all':
+                    play_clip('off')
+                self.sounded = False
+                print('restore', flush=True)
+        return True
+
+
+def demo(seconds):
+    """Show the overlay following the cursor for a while, no click needed."""
+    art = selected_overlay()
+    if not art:
+        print('selected cursor theme has no overlay art', file=sys.stderr)
+        return 1
+    overlay = Overlay()
+    loop = GLib.MainLoop()
+    GLib.idle_add(lambda: overlay.press(art) and False)
+    GLib.timeout_add(int(seconds * 1000), lambda: overlay.release() and False)
+    GLib.timeout_add(int(seconds * 1000) + 400, loop.quit)
+    loop.run()
+    overlay.stop()
+    return 0
+
+
+def main():
+    if len(sys.argv) == 3 and sys.argv[1] == '--demo':
+        return demo(float(sys.argv[2]))
+    devices = pointer_devices()
+    if not devices:
+        print("No readable pointer devices — is this user in the 'input' group "
+              "(and has the session restarted since)?", file=sys.stderr)
+        return 1
+    overlay = Overlay()
+    listener = Listener(overlay)
+    for dev in devices:
+        listener.watch(dev)
+    GLib.timeout_add_seconds(5, listener.rescan)
+    loop = GLib.MainLoop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, loop.quit)
+    loop.run()
+    overlay.stop()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

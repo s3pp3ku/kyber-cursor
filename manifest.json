@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.s3pp3ku.kyber-cursor",
+  "name": "Kyber Cursor",
+  "version": "1.0.0",
+  "author": "s3pp3ku",
+  "license": "MIT",
+  "description": "A lightsaber-inspired mouse pointer in your theme's accent color that ignites when you hold a button: glow, crossguard beams, a drag trail and optional sounds.",
+  "kinds": ["service"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

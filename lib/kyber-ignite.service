@@ -1,0 +1,20 @@
+[Unit]
+Description=Kyber cursor: ignite on click
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so
+ExecStart=@PLUGIN@/lib/ignite-listener
+Restart=on-failure
+RestartSec=2
+# The listener only reads button events and draws a click-through overlay,
+# so it needs no writes and no privileges.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=graphical-session.target
