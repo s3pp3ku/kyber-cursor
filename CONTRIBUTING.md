@@ -11,3 +11,7 @@ Thanks for helping. A few ground rules keep the project safe to share:
   compare the output of `lib/build.py` before and after (it should stay
   byte-identical unless the change is meant to alter the look).
 - Tell us what you tested on (Hyprland and Omarchy versions, display scale).
+
+## Handy when hacking on Kyber
+- After editing `lib/ignite-listener`, restart the glow helper: `systemctl --user restart kyber-ignite`.
+- Changes to the bar button's QML (`KyberWidget.qml`, `Panel.qml`) need a shell restart: `omarchy-restart-shell`. Hot reload does not replace already-compiled components.

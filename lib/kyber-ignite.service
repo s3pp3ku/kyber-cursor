@@ -2,6 +2,9 @@
 Description=Kyber cursor: ignite on click
 After=graphical-session.target
 PartOf=graphical-session.target
+# Not in the 'input' group yet? Then skip quietly (no failing, no restart loop).
+# After joining the group and restarting, it starts by itself.
+ConditionGroup=input
 
 [Service]
 Type=simple

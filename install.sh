@@ -48,12 +48,14 @@ done
 "$PLUGIN_DIR/bin/kyber" apply
 "$PLUGIN_DIR/bin/kyber" sounds default
 systemctl --user daemon-reload
+# Always enable it: the unit has ConditionGroup=input, so without the group it is
+# simply skipped, and it starts by itself once the user has joined the group and
+# restarted. Start it right now only if the group is already active.
+systemctl --user enable kyber-ignite.service
 if id -nG | tr ' ' '\n' | grep -qx input; then
-  systemctl --user enable --now kyber-ignite.service
+  systemctl --user start kyber-ignite.service
 else
-  # without the group the glow helper cannot see button presses and would just
-  # fail and restart; the cursor itself works fine without it
-  echo "Skipping the click-glow service for now (you are not in the 'input' group)."
+  echo "The click glow will start by itself after you join the 'input' group and restart (see below)."
 fi
 
 if ! id -nG | tr ' ' '\n' | grep -qx input; then
@@ -63,9 +65,9 @@ The click glow reads mouse buttons from /dev/input, which needs the 'input'
 group. This installer does not use sudo, so run this yourself, then reboot
 (a logout is not enough if systemd --user lingers):
     sudo usermod -aG input "$USER"
-Then run:  systemctl --user enable --now kyber-ignite.service
+After you restart the computer the click glow turns on by itself; nothing else to run.
 Without it you still get the cursor in your theme's accent; only the click
 glow, trail and sounds stay off.
 MSG
 fi
-echo "Done. Try holding a mouse button. 'kyber status' shows the state."
+if id -nG | tr ' ' '\n' | grep -qx input; then echo "Done. Try holding a mouse button for a second. 'kyber status' shows the state."; else echo "Done. Your cursor is set up. 'kyber status' shows the state."; fi

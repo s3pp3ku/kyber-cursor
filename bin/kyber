@@ -358,13 +358,18 @@ gi.require_version("Gtk","4.0"); gi.require_version("Gtk4LayerShell","1.0")' 2>/
   done
 
   echo "Click glow"
-  if id -nG | tr ' ' '\n' | grep -qx input; then ok "you are in the 'input' group"
-  else fail "you are not in the 'input' group (the click glow cannot see mouse buttons)" "sudo usermod -aG input \"$USER\"   then reboot. Without it you still get the cursor; only the glow, trail and sounds stay off."; fi
-  if compgen -G "/dev/input/event*" >/dev/null && [[ -r $(ls /dev/input/event* 2>/dev/null | head -1) ]]; then ok "input devices are readable"
-  else note "input devices are not readable by this session yet (a reboot is needed after joining the group)"; fi
-  local svc; svc=$(systemctl --user is-active kyber-ignite.service 2>/dev/null || true)
-  if [[ $svc == active ]]; then ok "glow service is running"
-  else fail "glow service is '${svc:-not installed}'" "run ./install.sh from the plugin folder, then: systemctl --user enable --now kyber-ignite.service"; fi
+  local ingroup=0
+  if id -nG | tr ' ' '\n' | grep -qx input; then ingroup=1; ok "you are in the 'input' group"
+  elif getent group input 2>/dev/null | cut -d: -f4 | tr ',' '\n' | grep -qx "$USER"; then
+    note "you have joined the 'input' group but it is not active yet. Restart the computer; the click glow then turns on by itself. (Nothing else to run.)"
+  else note "the click glow is off: you are not in the 'input' group. That is optional. To turn it on: sudo usermod -aG input \"$USER\"   then restart the computer (it then starts by itself)."; fi
+  if [[ $ingroup -eq 1 ]]; then
+    if compgen -G "/dev/input/event*" >/dev/null && [[ -r $(ls /dev/input/event* 2>/dev/null | head -1) ]]; then ok "input devices are readable"
+    else note "input devices are not readable by this session yet (a restart is needed after joining the group)"; fi
+    local svc; svc=$(systemctl --user is-active kyber-ignite.service 2>/dev/null || true)
+    if [[ $svc == active ]]; then ok "glow service is running"
+    else fail "glow service is '${svc:-not installed}'" "run ./install.sh from the plugin folder, or: systemctl --user enable --now kyber-ignite.service"; fi
+  fi
 
   echo "Cursor"
   [[ -e $ICONS/$THEME ]] && ok "cursor theme is built" || fail "cursor theme not built" "kyber apply"
@@ -380,7 +385,9 @@ gi.require_version("Gtk","4.0"); gi.require_version("Gtk4LayerShell","1.0")' 2>/
     if [[ $n -gt 0 ]]; then ok "sounds/$kind: $n clip(s)"; else note "sounds/$kind is empty: kyber sounds default"; fi
   done
   echo
-  if [[ $bad -eq 0 ]]; then echo "Everything checks out."; else echo "Fix the [FIX] items above, then run: kyber doctor"; return 1; fi
+  if [[ $bad -eq 0 ]]; then
+    if [[ $ingroup -eq 1 ]]; then echo "Everything checks out."; else echo "Everything checks out. (The optional click glow is off.)"; fi
+  else echo "Fix the [FIX] items above, then run: kyber doctor"; return 1; fi
 }
 
 # ---- setup -------------------------------------------------------------------
@@ -389,7 +396,7 @@ gi.require_version("Gtk","4.0"); gi.require_version("Gtk4LayerShell","1.0")' 2>/
 # restarts the desktop shell: anything like that is left on a checklist for
 # the person (or the agent helping them, after asking).
 cmd_setup() {
-  local yes=0 bar=0 a missing=0
+  local yes=0 bar=0 a missing=0 opts="--yes"
   for a in "$@"; do
     case $a in --yes) yes=1 ;; --bar) bar=1 ;; *) echo "usage: kyber setup [--yes] [--bar]" >&2; exit 2 ;; esac
   done
@@ -400,15 +407,16 @@ Kyber Cursor setup
     - add one background helper that lights the cursor while you hold a mouse button
     - make it recolor itself when you change Omarchy themes
     - create a few simple sound effects on your computer (nothing is downloaded)
-$( ((bar)) && echo "    - put a small Kyber button on your top bar" )
-  Will NOT do: use sudo, download anything, change system files, or restart anything.
 MSG
+  if ((bar)); then echo "    - put a small Kyber button on your top bar (this edits your bar)"; fi
+  echo "  Will NOT do: use sudo, download anything, change system files, or restart anything."
   if ((! yes)); then
     echo
-    echo "That was only a preview. To go ahead: kyber setup --yes   (add --bar for the bar button)"
+    echo "That was only a preview. To go ahead: $PLUGIN_DIR/bin/kyber setup --yes   (add --bar for the bar button)"
     return 0
   fi
 
+  ((bar)) && opts="--yes --bar"
   echo
   echo "Checking what Kyber needs..."
   if ! /usr/bin/python3 -c 'import gi, cairo, PIL, cairosvg, evdev
@@ -425,14 +433,15 @@ password, so please run it yourself (an assistant should not run it for you):
 
   sudo pacman -S --needed python-gobject python-cairo python-pillow python-cairosvg python-evdev gtk4 gtk4-layer-shell grim pipewire
 
-Then run this again:  kyber setup --yes
+Then run this again, with the same options:  $PLUGIN_DIR/bin/kyber setup $opts
 MSG
     return 3
   fi
 
   "$PLUGIN_DIR/install.sh" --yes
   if ((bar)); then
-    if command -v omarchy >/dev/null; then omarchy bar put io.github.s3pp3ku.kyber-cursor || echo "Could not place the bar button; try: omarchy bar put io.github.s3pp3ku.kyber-cursor"; fi
+    if command -v omarchy >/dev/null; then omarchy bar put io.github.s3pp3ku.kyber-cursor || echo "Could not place the bar button; try: omarchy bar put io.github.s3pp3ku.kyber-cursor"
+    else echo "Could not place the bar button (the 'omarchy' command was not found)."; fi
   fi
 
   echo
@@ -445,9 +454,11 @@ MSG
     echo "     Without this you still get the cursor and its color; only the glow, trail and sounds stay off."
     n=$((n + 1))
   fi
-  echo "  $n. Restart the desktop shell once so the Kyber button can load (the bar flickers for a few seconds):"
-  echo "       omarchy-restart-shell"
-  n=$((n + 1))
+  if ((bar)); then
+    echo "  $n. Restart the desktop shell once so the Kyber button can load (the bar flickers for a few seconds):"
+    echo "       omarchy-restart-shell"
+    n=$((n + 1))
+  fi
   echo "  $n. Check everything:  kyber doctor"
   echo
   "$PLUGIN_DIR/bin/kyber" doctor || true

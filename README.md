@@ -33,13 +33,13 @@ New to Linux? You don't have to type any commands yourself. If you use an AI cod
 > Set up Kyber Cursor on my Omarchy computer. Read https://raw.githubusercontent.com/s3pp3ku/kyber-cursor/main/AGENTS.md first and follow it exactly. Explain things to me in plain English, and ask me before anything that needs my password, restarts the computer or the desktop shell, or changes my top bar.
 
 What happens next, in plain words:
-1. The assistant adds Kyber from Omarchy's plugin list (the normal way to install a plugin).
+1. The assistant asks, then downloads Kyber from GitHub and adds it to Omarchy's plugin list (the normal way to install a plugin). No password.
 2. It shows you a short **preview** of what it is about to do, and waits for your OK.
 3. It sets everything up. This part needs no password. Kyber makes its own simple sound effects on your computer, and nothing is downloaded.
 4. It then goes through a short checklist **with you**, asking before each item:
    - one command that installs a few helper programs (needs your password, so *you* run it);
    - an **optional** permission for the click glow (explained below);
-   - one restart of the desktop shell, so the Kyber button can load.
+   - one restart of the desktop shell, only if you chose the optional Kyber button on your top bar.
 5. It checks that everything works and tells you how to try it: hold the left mouse button for a second.
 
 The assistant is told never to run `sudo` for you, never to download sounds, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
@@ -92,6 +92,8 @@ omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
 3. adds theme-set and post-boot hooks under `~/.config/omarchy/hooks/`
 4. creates the sound folders under `~/.config/kyber-cursor/sounds/` and fills empty ones with the generated original pack
 5. builds and applies the cursor
+
+(The AI-assistant route skips `--enable` on purpose: the cursor and glow do not need it, and the optional bar-button step turns the plugin on.)
 
 Shortcut: after the first command, `~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup` previews the setup and `... setup --yes` does the non-privileged part (add `--bar` for the bar button).
 
