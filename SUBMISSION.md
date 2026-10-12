@@ -31,7 +31,7 @@ Cursor
 A mouse pointer in the active Omarchy theme's accent color, inspired by the
 iconic laser sword of a very famous space opera. Holding a mouse button
 ignites it: a brighter blade, crossguard beams, a pulsing glow and a fading
-drag trail. Optional sounds (no clips bundled: users add their own). The cursor
+drag trail. Sounds: no recordings are bundled; the installer generates a small original pack synthesized by lib/make_sounds.py (users can add their own clips). The cursor
 is rebuilt on every `omarchy theme set` and at boot.
 
 Ships as a `service`-kind plugin with no UI of its own. Nothing is installed

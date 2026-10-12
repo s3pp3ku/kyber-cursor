@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+# Kyber bundles no recordings. Sounds live in ~/.config/kyber-cursor/sounds, not here.
+*.wav
+*.mp3
+*.ogg
+*.oga
+*.flac
+*.m4a

@@ -4,7 +4,17 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 
 ![Kyber igniting on click-and-hold, with the drag trail](media/demo.gif)
 
-[Watch with sound (mp4)](media/demo.mp4) · every cursor role:
+[Watch the clip (mp4, no sound)](media/demo.mp4)
+
+| Ignited | Dragging |
+|---|---|
+| ![The cursor lit up, with its glow](media/glow-ignite.png) | ![The cursor mid-drag, with its fading trail](media/glow-trail.png) |
+
+The options popup: pick where the glow color comes from (Theme, Custom or Random), the sound mode and volume, and the drag trail.
+
+![The options popup in Theme, Custom and Random modes](media/popup-modes.png)
+
+Every cursor role, generated from the accent:
 
 ![All cursor roles](preview.png)
 
@@ -14,7 +24,7 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), sound mode and volume, drag trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
-- Optional sounds (bring your own clips): ignite after a 0.3 s hold, off on release, a clash on double-click. A hotkey cycles all / ignite-only / mute.
+- Sounds: ignite after a 0.3 s hold, off on release, a clash on double-click. A small original pack is generated for you (no recordings bundled), and you can add your own. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
 ## Is this safe? (plain English)
@@ -59,7 +69,7 @@ omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
 1. links `kyber` into `~/.local/bin`
 2. adds a systemd **user** service `kyber-ignite` (the click glow)
 3. adds theme-set and post-boot hooks under `~/.config/omarchy/hooks/`
-4. creates empty sound folders under `~/.config/kyber-cursor/sounds/`
+4. creates the sound folders under `~/.config/kyber-cursor/sounds/` and fills empty ones with the generated original pack
 5. builds and applies the cursor
 
 Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. The installer itself uses no sudo and no network, and the plugin needs neither at run time.
@@ -87,7 +97,16 @@ o.bind("F11", "Toggle drag trail", "kyber trail")
 ```
 
 ## Sounds
-No clips are bundled. Put `.wav` / `.mp3` / `.ogg` files in:
+Kyber bundles **no recordings**. The installer generates a small original sound pack on your machine, so sound works right away. The pack is synthesized from sine waves and filtered noise by `lib/make_sounds.py` (MIT, like the rest of the project): 3 ignites, 2 offs and 5 clashes. Nothing is downloaded or sampled from anywhere.
+
+```
+kyber sounds default        # (re)generate the pack into empty folders
+kyber sounds preview        # play one of each, at your volume setting
+kyber sounds list           # what you have
+kyber sounds add FILE ignite|off|clash    # add a clip of your own
+```
+
+Want different sounds? Add your own `.wav` / `.mp3` / `.ogg` / `.flac` files with `kyber sounds add`, or drop them into the folders below. Good sources are your own recordings and CC0 or royalty-free libraries (for example Freesound with the CC0 filter, Pixabay or Mixkit), but check each file's license. Film, TV and game audio is copyrighted, so those clips can't be bundled or shared here, and pull requests that add them will be declined.
 
 | Folder | Plays when |
 |---|---|
@@ -95,7 +114,10 @@ No clips are bundled. Put `.wav` / `.mp3` / `.ogg` files in:
 | `~/.config/kyber-cursor/sounds/off/` | the button is released after an ignite sound |
 | `~/.config/kyber-cursor/sounds/clash/` | you double-click (a clip named `2-...` plays once; any other clip plays twice) |
 
-Empty folders mean silence. Clips play through `pw-play`. The volume (`kyber volume 0-100`, default 55, or the slider in the popup) uses the same curved scale as system volume sliders, so the percentage matches how loud it sounds. Use clips you have the right to use.
+Empty folders mean silence. Clips play through `pw-play`. The volume (`kyber volume 0-100`, default 55, or the slider in the popup) uses the same curved scale as system volume sliders, so the percentage matches how loud it sounds.
+
+## Troubleshooting
+Run `kyber doctor`. It checks the dependencies, the `input` group, the glow service, the hooks and the sounds, and prints the fix for anything missing. It only reads; it never changes your system. If you use an AI coding agent to set this up, point it at `AGENTS.md`.
 
 ## How it works, and its limits
 On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.

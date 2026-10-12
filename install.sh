@@ -28,7 +28,8 @@ Kyber Cursor will:
   1. link  $BIN/kyber  ->  $PLUGIN_DIR/bin/kyber
   2. add   $UNIT  (systemd --user, the click glow) and start it
   3. add   theme-set + post-boot hooks in $HOOKS  (recolor on theme change)
-  4. create $STATE/sounds/{ignite,off,clash}/  (empty: drop your own clips in)
+  4. create $STATE/sounds/{ignite,off,clash}/ and fill empty ones with a small
+     ORIGINAL sound pack generated on your machine (nothing is downloaded)
   5. build the cursor in your current accent and switch to it
 Undo everything with ./uninstall.sh.
 MSG
@@ -45,6 +46,7 @@ for d in theme-set.d post-boot.d; do
   chmod +x "$HOOKS/$d/kyber-cursor.sh"
 done
 "$PLUGIN_DIR/bin/kyber" apply
+"$PLUGIN_DIR/bin/kyber" sounds default
 systemctl --user daemon-reload
 if id -nG | tr ' ' '\n' | grep -qx input; then
   systemctl --user enable --now kyber-ignite.service
