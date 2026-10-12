@@ -2,6 +2,8 @@
 
 A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a very famous space opera. Kyber is the crystal that gives that blade its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites with a brighter blade, two crossguard beams and a pulsing glow, plus a fading light trail when you drag. Sound effects are optional.
 
+![Kyber Cursor: a glowing blade for your Omarchy pointer](preview.png)
+
 ![Kyber igniting on click-and-hold, with the drag trail](media/demo.gif)
 
 [Watch the clip (mp4, no sound)](media/demo.mp4)
@@ -16,7 +18,7 @@ The options popup: pick where the glow color comes from (Theme, Custom or Random
 
 Every cursor role, generated from the accent:
 
-![All cursor roles](preview.png)
+![All cursor roles](media/cursor-roles.png)
 
 ## Features
 - Full cursor set (pointer, link, busy, text, crosshair, move, resize, grab, not-allowed...), regenerated in the current accent on every `omarchy theme set` and at boot.
