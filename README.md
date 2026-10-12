@@ -74,6 +74,19 @@ omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
 
 Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. The installer itself uses no sudo and no network, and the plugin needs neither at run time.
 
+## Updating
+```
+omarchy plugin update io.github.s3pp3ku.kyber-cursor
+omarchy-restart-shell      # once, so the shell loads the new bar button and popup
+kyber doctor               # checks everything and says how to fix anything missing
+```
+The Plugin Manager shows a green arrow next to Kyber when an update is available, and its Update button does the same as the first command. An update does not re-run `install.sh`, place the bar button or generate sounds for you. After updating from 1.0 or 1.1:
+- add the button with `omarchy bar put io.github.s3pp3ku.kyber-cursor` (optional);
+- run `kyber sounds default` to fill empty sound folders with the original pack (optional; it never replaces clips you added);
+- sound volume now uses a curved scale. If you set one in 1.1, raise it (about 55 gives what 18 used to).
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
 ## Use
 ```
 kyber apply        # rebuild in the current accent and switch to it
