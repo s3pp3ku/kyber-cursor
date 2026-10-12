@@ -27,6 +27,27 @@ Every cursor role, generated from the accent:
 - Sounds: ignite after a 0.3 s hold, off on release, a clash on double-click. A small original pack is generated for you (no recordings bundled), and you can add your own. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
+## Easiest way: let an AI assistant set it up
+New to Linux? You don't have to type any commands yourself. If you use an AI coding assistant (Claude Code, Codex, Gemini CLI and similar), paste this to it:
+
+> Set up Kyber Cursor on my Omarchy computer. Read https://raw.githubusercontent.com/s3pp3ku/kyber-cursor/main/AGENTS.md first and follow it exactly. Explain things to me in plain English, and ask me before anything that needs my password, restarts the computer or the desktop shell, or changes my top bar.
+
+What happens next, in plain words:
+1. The assistant adds Kyber from Omarchy's plugin list (the normal way to install a plugin).
+2. It shows you a short **preview** of what it is about to do, and waits for your OK.
+3. It sets everything up. This part needs no password. Kyber makes its own simple sound effects on your computer, and nothing is downloaded.
+4. It then goes through a short checklist **with you**, asking before each item:
+   - one command that installs a few helper programs (needs your password, so *you* run it);
+   - an **optional** permission for the click glow (explained below);
+   - one restart of the desktop shell, so the Kyber button can load.
+5. It checks that everything works and tells you how to try it: hold the left mouse button for a second.
+
+The assistant is told never to run `sudo` for you, never to download sounds, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
+
+**The one permission worth understanding:** the click glow needs to know when you press a mouse button, anywhere on screen. Linux only tells that to programs you have put in a group called `input`. The catch is that the permission belongs to *you*, so any program you run could then also read your keyboard and mouse input. If you are not comfortable with that, skip it: you still get the cursor in your theme's color, and only the glow, trail and sounds stay off. (More in "Is this safe?" below.)
+
+Prefer to do it yourself? Use the Install section below, or run `kyber setup` from the plugin folder. It shows a preview first and changes nothing until you add `--yes`.
+
 ## Is this safe? (plain English)
 
 **What is it?** Two parts. (1) A cursor theme: just picture files, like any other cursor pack. (2) A small helper program that draws the glow when you hold a mouse button.
@@ -71,6 +92,8 @@ omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
 3. adds theme-set and post-boot hooks under `~/.config/omarchy/hooks/`
 4. creates the sound folders under `~/.config/kyber-cursor/sounds/` and fills empty ones with the generated original pack
 5. builds and applies the cursor
+
+Shortcut: after the first command, `~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup` previews the setup and `... setup --yes` does the non-privileged part (add `--bar` for the bar button).
 
 Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. The installer itself uses no sudo and no network, and the plugin needs neither at run time.
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.2.0
+- `kyber setup`: one command for the non-privileged setup. It previews by default and only acts with `--yes`; it never uses `sudo` or restarts anything, and leaves a checklist for the person. `AGENTS.md` is rewritten as a plain-English, conservative guide so a user can just point an AI assistant at it; the README has a copy-and-paste prompt.
 - Updating from 1.0 or 1.1: run `omarchy plugin update io.github.s3pp3ku.kyber-cursor`, restart the shell once (`omarchy-restart-shell`) so the bar button loads, then `kyber doctor`. See the README's "Updating" section.
 - Sounds: an original synthesized pack is generated at install (`kyber sounds default`), with `kyber sounds add|list|preview` for your own clips. No recordings are bundled and audio files are git-ignored.
 - `kyber doctor` checks the setup and prints the fix for anything missing; `AGENTS.md` guides AI coding agents through setup.
