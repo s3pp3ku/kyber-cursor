@@ -258,6 +258,11 @@ Panel {
         PanelSeparator { foreground: root.fg }
 
         PanelSectionHeader { text: "SOUND"; foreground: root.fg; fontFamily: root.fontFam; font.letterSpacing: 1 }
+        Label {
+          text: "Active mode: " + (root.cfg.sound === "ignite" ? "IGNITE ONLY"
+            : (root.cfg.sound === "mute" ? "MUTED" : "ALL SOUNDS"))
+          font.pixelSize: Style.font.title
+        }
         Row {
           spacing: Style.spacing.sm
           Repeater {
@@ -265,8 +270,9 @@ Panel {
             Rectangle {
               width: Style.space(96); height: Style.space(30); radius: Style.space(6)
               color: root.cfg.sound === modelData.k ? root.shownHex : "transparent"
-              border.width: 1; border.color: root.fg
-              Label { anchors.centerIn: parent; text: modelData.t
+              border.width: root.cfg.sound === modelData.k ? 2 : 1
+              border.color: root.cfg.sound === modelData.k ? root.shownHex : root.fg
+              Label { anchors.centerIn: parent; text: (root.cfg.sound === modelData.k ? "✓ " : "") + modelData.t
                 color: root.cfg.sound === modelData.k ? "#000000" : root.fg }
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.act("sound " + modelData.k) }
             }

@@ -74,6 +74,41 @@ def luminance(h):
     r, g, b = (lin(c) for c in _rgb(h))
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
+def beam_color(h):
+    """Keep low-luminance hues readable without changing already-bright cyan/green."""
+    luma = luminance(h)
+    k = max(0.0, 1 - luma / GLOW_LUMA_TARGET) * 0.46
+    return lighten(h, min(0.36, k))
+
+def beam_width_scale(h):
+    """Widen low-luminance beams; bright cyan/green stay at the base size."""
+    luma = luminance(h)
+    return 1.0 + min(0.45, max(0.0, 1 - luma / GLOW_LUMA_TARGET) * 0.58)
+
+def blade_core_color(h):
+    """White-hot core floor for dark backgrounds, while retaining hue."""
+    if luminance(h) >= 0.52:
+        return h
+    lo, hi = 0.0, 0.80
+    for _ in range(12):
+        mid = (lo + hi) / 2
+        if luminance(lighten(h, mid)) < 0.52:
+            lo = mid
+        else:
+            hi = mid
+    return lighten(h, hi)
+
+def vivid_beam_boost(h):
+    rgb = _rgb(h)
+    if max(rgb) <= 32:
+        return 0.0
+    chroma = (max(rgb) - min(rgb)) / 255.0
+    return min(1.0, chroma / 0.40) * max(0.0, 1 - luminance(h) / GLOW_LUMA_TARGET)
+
+def blue_haze_weight(h):
+    r, g, b = _rgb(h)
+    return min(1.0, max(0.0, (b - max(r, g)) / 128.0)) * min(1.0, max(0.0, (b - 32.0) / 96.0))
+
 # Accents darker than this get their glow lifted so every theme glows about
 # equally; a mid green sits right around it and is left untouched.
 # Haze strength now that blurs no longer carry a dark fringe (it used to dim the haze).
@@ -114,11 +149,16 @@ SHARED_DEFS = '''
   <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#3a3f48"/><stop offset="1" stop-color="#101216"/></linearGradient>'''
 
-def lit_beam(a, b, glow):
+def lit_beam(a, b, glow, extra_width=1.0):
     # white-hot core, then a pale tint, then the full colour, so the beam
     # grades into the bloom instead of ending at a hard coloured edge
-    return (line(a, b, glow, 2.4, ' opacity="0.9"') + line(a, b, lighten(glow, 0.45), 1.5)
-            + line(a, b, lighten(glow, 0.8), 1.0) + line(a, b, '#ffffff', 0.55))
+    boost = vivid_beam_boost(glow)
+    width = beam_width_scale(glow) * extra_width * (1 + 0.35 * boost)
+    outer = beam_color(glow)
+    core = blade_core_color(glow)
+    return (line(a, b, outer, 3.0 * width, ' opacity="0.94"') + line(a, b, core, (1.9 + 0.35 * boost) * width)
+            + line(a, b, lighten(core, 0.58), (1.25 + 0.45 * boost) * width)
+            + line(a, b, '#ffffff', (0.75 + 0.65 * boost) * width))
 
 # ----------------------------------------------------------------- pointer
 def pointer(accent, glow, lit):
@@ -409,7 +449,7 @@ def rasterize(kind, accent, glow, lit, px):
 # image on a click-through overlay layer, lined up under the real cursor.
 # It's drawn on a canvas larger than the cursor frame so the haze can spread
 # past the cursor bitmap's edges.
-OVERLAY_MARGIN = 14.0                  # extra viewBox units on every side
+OVERLAY_MARGIN = 40.0                  # room for the widest blur to fade to transparent
 OVERLAY_PX_PER_UNIT = 6                # oversampled; the listener scales it down
 
 def write_overlay(glow, theme_dir):
@@ -431,8 +471,11 @@ def write_overlay(glow, theme_dir):
     # bright ones like green at the same strength, so lift the haze for them:
     # a stronger falloff, and a haze nudged towards white.
     luma = luminance(glow)
-    lift = min(1.6, max(1.0, (GLOW_LUMA_TARGET / max(luma, 0.01)) ** 0.5))
+    boost = vivid_beam_boost(glow)
+    blue = blue_haze_weight(glow)
+    lift = min(1.6, max(1.0, (GLOW_LUMA_TARGET / max(luma, 0.01)) ** 0.5)) * (1 + 0.20 * boost) * (1 - 0.415 * blue)
     haze = lighten(glow, min(0.35, max(0.0, 1 - luma / GLOW_LUMA_TARGET) * 0.45))
+    beam_w = beam_width_scale(glow) * (1 + 0.35 * boost)
     a, b = edge_line(-0.6, 0.03, 0.80)
 
     def glow_of(halo, col, crisp='', k=1.0):
@@ -453,9 +496,20 @@ def write_overlay(glow, theme_dir):
     # Separate layers so the listener can animate them: the haze swells in,
     # each beam grows from its emitter ('from') to its end ('to').
     layers = []
-    base = (f'<polygon points="{P(T)} {P(L)} {P(M)} {P(R)}" fill="{haze}" stroke="{haze}" stroke-width="4.0" stroke-linejoin="round"/>'
+    def beam_halo(start, stop, col, width, main):
+        halo = line(start, stop, col, width)
+        if main:
+            halo += f'<circle cx="{stop[0]}" cy="{stop[1]}" r="{width * 0.65}" fill="{col}"/>'
+        return halo
+
+    def upper_blade_fill(col):
+        center = add(T, N, 4.0)
+        return line(add(center, U, 5.0), add(center, U, 20.0), col, 18.0, ' opacity="0.24"')
+
+    base = (line(a, b, haze, 9.0 * beam_w * 1.25)
             # a softer spill under the handle, so the light reads as coming from the blade
-            + line(add(M, U, 1.0), add(M, U, 19.5), haze, 11.0, ' opacity="0.50"'))
+            + line(add(M, U, 1.0), add(M, U, 19.5), haze, 11.0, ' opacity="0.50"')
+            + upper_blade_fill(haze))
     glow_of(base, haze, k=DARK_K).save(theme_dir / 'overlay-base.png')
     layers.append({'image': 'overlay-base.png', 'kind': 'haze'})
     beams = [('overlay-edge.png', b, a)]   # the blade grows from the hilt end up to the tip
@@ -463,20 +517,39 @@ def write_overlay(glow, theme_dir):
         tip = add(e, d, STUB)
         beams.append((name, tip, add(tip, d, BEAM_LEN)))
     for name, start, stop in beams:
-        glow_of(line(start, stop, haze, 7.8), haze, lit_beam(start, stop, glow), k=DARK_K).save(theme_dir / name)
+        main_w = 1.25 if name == 'overlay-edge.png' else 1.0
+        crisp = lit_beam(start, stop, glow, main_w)
+        if luma < 0.12 or boost > 0.0:
+            crisp = (line(start, stop, haze, 4.2 * beam_w * main_w)
+                     + line(start, stop, '#10121a', 3.2 * beam_w * main_w, ' opacity="0.65"')
+                     + crisp)
+        glow_of(beam_halo(start, stop, haze, 9.0 * beam_w * main_w, name == 'overlay-edge.png'), haze,
+                crisp, k=DARK_K).save(theme_dir / name)
         layers.append({'image': name, 'kind': 'beam', 'from': [round(start[0], 3), round(start[1], 3)],
                        'to': [round(stop[0], 3), round(stop[1], 3)]})
     # Light-background set: over white the boosted haze saturates into one flat blob,
     # so use a gentler, lighter haze with a crisp deeper-coloured beam for definition.
-    lk, lc, deep = 0.30, lighten(glow, 0.30), darken(glow, 0.30)
+    # Compensate for the shared lift: +50% light haze versus +30% dark.
+    lk, lc, deep = 0.30 * (1 + blue / 26.0), lighten(glow, 0.30), darken(beam_color(glow), 0.22)
     light_layers = []
-    lbase = (f'<polygon points="{P(T)} {P(L)} {P(M)} {P(R)}" fill="{lc}" stroke="{lc}" stroke-width="3.0" stroke-linejoin="round"/>'
-             + line(add(M, U, 1.0), add(M, U, 19.5), lc, 9.0, ' opacity="0.50"'))
+    lbase = (line(a, b, lc, 7.2 * beam_w * 1.25)
+             + line(add(M, U, 1.0), add(M, U, 19.5), lc, 9.0, ' opacity="0.50"')
+             + upper_blade_fill(lc))
     glow_of(lbase, lc, k=lk * 0.6).save(theme_dir / 'overlay-light-base.png')
     light_layers.append({'image': 'overlay-light-base.png', 'kind': 'haze'})
     for (name, start, stop), meta_layer in zip(beams, layers[1:]):
         lname = name.replace('overlay-', 'overlay-light-')
-        glow_of(line(start, stop, lc, 6.0), lc, line(start, stop, deep, 2.4), k=lk).save(theme_dir / lname)
+        main_w = 1.25 if name == 'overlay-edge.png' else 1.0
+        width = beam_w * main_w
+        if luma < 0.12 or boost > 0.0:
+            # A pale core alone disappears on white. Contain it with a thin
+            # dark edge, lightsaber-style, before the pale halo blooms out.
+            crisp = (line(start, stop, darken(beam_color(glow), 0.72), 4.2 * width)
+                     + line(start, stop, blade_core_color(glow), 2.5 * width)
+                     + line(start, stop, '#ffffff', (0.9 + 0.65 * boost) * width))
+        else:
+            crisp = line(start, stop, deep, 3.0 * width)
+        glow_of(beam_halo(start, stop, lc, 7.2 * width, name == 'overlay-edge.png'), lc, crisp, k=lk).save(theme_dir / lname)
         light_layers.append({**meta_layer, 'image': lname})
     meta = {'px_per_unit': unit, 'origin': [vb[0], vb[1]], 'hotspot': [T[0], T[1]],
             'view_w': VIEW[2], 'scale': SCALE, 'sizes': list(SIZES), 'layers': layers, 'light_layers': light_layers,

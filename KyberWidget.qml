@@ -52,7 +52,10 @@ BarWidget {
 
   // ---- popup panel (shape contract for the shell's open/close/toggle)
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
-  function open() { if (panelLoader.item) panelLoader.item.open() }
+  function open() {
+    refresh()
+    if (panelLoader.item) panelLoader.item.open()
+  }
   function close() { if (panelLoader.item) panelLoader.item.close() }
   function togglePanel() { if (panelLoader.item) panelLoader.item.toggle() }
 

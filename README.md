@@ -1,6 +1,6 @@
 # Kyber Cursor
 
-A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a very famous space opera. Kyber is the crystal that gives that blade its color, and here your theme's accent plays that part. The pointer is a dark faceted spearhead with a short hilt, lit along its edge in your theme's accent. **Hold a mouse button** and it ignites with a brighter blade, two crossguard beams and a pulsing glow, plus a fading light trail when you drag. Sound effects are optional.
+Kyber Cursor is an independent Omarchy / Hyprland plugin that turns the mouse pointer into a theme-colored blade. Hold a mouse button to ignite it, light the crossguard beams and leave a fading trail while dragging.
 
 ![Kyber Cursor: a glowing blade for your Omarchy pointer](preview.png)
 
@@ -12,7 +12,7 @@ A mouse pointer for Omarchy / Hyprland, inspired by the iconic laser sword of a 
 |---|---|
 | ![The cursor lit up, with its glow](media/glow-ignite.png) | ![The cursor mid-drag, with its fading trail](media/glow-trail.png) |
 
-The options popup: pick where the glow color comes from (Theme, Custom or Random), the sound mode and volume, and the drag trail.
+The options popup: choose a glow color and adjust the cursor and trail.
 
 ![The options popup in Theme, Custom and Random modes](media/popup-modes.png)
 
@@ -24,9 +24,8 @@ Every cursor role, generated from the accent:
 - Full cursor set (pointer, link, busy, text, crosshair, move, resize, grab, not-allowed...), regenerated in the current accent on every `omarchy theme set` and at boot.
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
-- A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), sound mode and volume, drag trail and on/off switches. No terminal needed.
+- A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
-- Sounds: ignite after a 0.3 s hold, off on release, a clash on double-click. A small original pack is generated for you (no recordings bundled), and you can add your own. A hotkey cycles all / ignite-only / mute.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
 
 ## Easiest way: let an AI assistant set it up
@@ -37,14 +36,14 @@ New to Linux? You don't have to type any commands yourself. If you use an AI cod
 What happens next, in plain words:
 1. The assistant asks, then downloads Kyber from GitHub and adds it to Omarchy's plugin list (the normal way to install a plugin). No password.
 2. It shows you a short **preview** of what it is about to do, and waits for your OK.
-3. It sets everything up. This part needs no password. Kyber makes its own simple sound effects on your computer, and nothing is downloaded.
+3. It sets up the cursor and helper. It does not download extra files.
 4. It then goes through a short checklist **with you**, asking before each item:
    - one command that installs a few helper programs (needs your password, so *you* run it);
    - an **optional** permission for the click glow (explained below);
    - one restart of the desktop shell, only if you chose the optional Kyber button on your top bar.
 5. It checks that everything works and tells you how to try it: hold the left mouse button for a second.
 
-The assistant is told never to run `sudo` for you, never to download sounds, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
+The assistant is told never to run `sudo` for you, to use only the files included with the plugin, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
 
 **The one permission worth understanding:** the click glow needs to know when you press a mouse button, anywhere on screen. Linux only tells that to programs you have put in a group called `input`. The catch is that the permission belongs to *you*, so any program you run could then also read your keyboard and mouse input. If you are not comfortable with that, skip it: you still get the cursor in your theme's color, and only the glow, trail and sounds stay off. (More in "Is this safe?" below.)
 
@@ -70,47 +69,51 @@ grep -nE "curl|wget|urllib|AF_INET|import requests|\beval\b|base64" bin/* lib/* 
 
 (The only socket the helper opens is the local one Hyprland provides, to ask where the cursor is.)
 
-## Requirements
-Hyprland (0.56 tested) on Omarchy, plus these packages (Arch names):
+## Install on Omarchy
 
-```
-sudo pacman -S --needed python-gobject python-cairo python-pillow python-cairosvg python-evdev gtk4 gtk4-layer-shell grim pipewire
-```
+Kyber has two parts: Omarchy downloads the plugin files, then Kyber's setup
+command installs the cursor and background helper. Adding the plugin does not
+run setup or install software with your password.
 
-You also need to be in the `input` group, because the click glow reads mouse-button events from `/dev/input` (see Safety):
+1. Open a terminal with **Super + Return** and add the plugin:
 
-```
-sudo usermod -aG input "$USER"    # then reboot
-```
+   ```sh
+   omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --yes
+   ```
 
-## Install
-```
-omarchy plugin add https://github.com/s3pp3ku/kyber-cursor --enable
-~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/install.sh
-```
-(or `git clone` it anywhere and run `./install.sh`). The installer lists every step and asks first. It:
-1. links `kyber` into `~/.local/bin`
-2. adds a systemd **user** service `kyber-ignite` (the click glow)
-3. adds theme-set and post-boot hooks under `~/.config/omarchy/hooks/`
-4. creates the sound folders under `~/.config/kyber-cursor/sounds/` and fills empty ones with the generated original pack
-5. builds and applies the cursor
+2. Preview setup (this changes nothing):
 
-(The AI-assistant route skips `--enable` on purpose: the cursor and glow do not need it, and the optional bar-button step turns the plugin on.)
+   ```sh
+   ~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup
+   ```
 
-Shortcut: after the first command, `~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup` previews the setup and `... setup --yes` does the non-privileged part (add `--bar` for the bar button).
+3. If the preview looks right, run setup:
 
-Remove everything with `./uninstall.sh`, which restores the Adwaita cursor. The installer itself uses no sudo and no network, and the plugin needs neither at run time.
+   ```sh
+   ~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup --yes
+   ```
+
+If helper programs are missing, setup prints the Arch command to install them.
+It needs your password, so run that command yourself in the terminal, then run
+the same setup command again. Kyber never runs `sudo` for you.
+
+The cursor works without the optional click glow. That feature needs membership
+in the Linux `input` group, which is a computer-wide permission; setup explains
+the trade-off and leaves the choice to you. The small bar button is optional.
+If you want it, add `--bar` to both setup commands above: preview first, then
+run the version with `--yes`. This changes the bar and may require a
+desktop-shell restart.
+
+To remove Kyber, run the plugin's `uninstall.sh`; it restores the normal cursor.
 
 ## Updating
 ```
 omarchy plugin update io.github.s3pp3ku.kyber-cursor
-omarchy-restart-shell      # once, so the shell loads the new bar button and popup
-kyber doctor               # checks everything and says how to fix anything missing
+kyber doctor
 ```
-The Plugin Manager shows a green arrow next to Kyber when an update is available, and its Update button does the same as the first command. An update does not re-run `install.sh`, place the bar button or generate sounds for you. After updating from 1.0 or 1.1:
-- add the button with `omarchy bar put io.github.s3pp3ku.kyber-cursor` (optional);
-- run `kyber sounds default` to fill empty sound folders with the original pack (optional; it never replaces clips you added);
-- sound volume now uses a curved scale. If you set one in 1.1, raise it (about 55 gives what 18 used to).
+Omarchy updates the plugin files; it does not rerun setup. If an update changes
+Kyber's helper or install files, run the setup command again with the same
+options you chose before. `kyber doctor` checks the current installation.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
@@ -137,24 +140,43 @@ o.bind("F11", "Toggle drag trail", "kyber trail")
 ```
 
 ## Sounds
-Kyber bundles **no recordings**. The installer generates a small original sound pack on your machine, so sound works right away. The pack is synthesized from sine waves and filtered noise by `lib/make_sounds.py` (MIT, like the rest of the project): 3 ignites, 2 offs and 5 clashes. Nothing is downloaded or sampled from anywhere.
 
+The Omarchy package includes the selected local recordings for power-up,
+power-down and clash effects. The prepared audio folder also contains movement
+and held-hum recordings for future runtime work.
+
+The package uses mono PCM16 / 44.1 kHz WAVs from
+[`assets/sounds/`](assets/sounds/README.md). No Downloads folder, audio generator,
+network connection, Python, or ffmpeg is needed on the user's computer. The
+original MP3s were decoded with a common gain for headroom.
+
+```sh
+kyber sounds default                     # copy the included recordings
+kyber sounds preview                     # listen (legacy Linux wrapper)
+kyber sounds list                        # list local sound files
+kyber sounds add FILE ignite|off|clash|swipe|hum
 ```
-kyber sounds default        # (re)generate the pack into empty folders
-kyber sounds preview        # play one of each, at your volume setting
-kyber sounds list           # what you have
-kyber sounds add FILE ignite|off|clash    # add a clip of your own
-```
 
-Want different sounds? Add your own `.wav` / `.mp3` / `.ogg` / `.flac` files with `kyber sounds add`, or drop them into the folders below. Good sources are your own recordings and CC0 or royalty-free libraries (for example Freesound with the CC0 filter, Pixabay or Mixkit), but check each file's license. Film, TV and game audio is copyrighted, so those clips can't be bundled or shared here, and pull requests that add them will be declined.
+Additional local WAV / MP3 / Ogg / FLAC recordings can override each role. The
+legacy installer's `sounds default` saves old generated defaults in a dated
+backup and retains other personal recordings.
 
-| Folder | Plays when |
-|---|---|
-| `~/.config/kyber-cursor/sounds/ignite/` | a button is held longer than 0.3 s (random clip) |
-| `~/.config/kyber-cursor/sounds/off/` | the button is released after an ignite sound |
-| `~/.config/kyber-cursor/sounds/clash/` | you double-click (a clip named `2-...` plays once; any other clip plays twice) |
+| Sound folder | Role |
+| --- | --- |
+| `sounds/ignite/` | One power-up per hold |
+| `sounds/off/` | Power-down on release in All mode |
+| `sounds/clash/` | Double-click clashes |
+| `sounds/swipe/` | Movement swipes |
+| `sounds/hum/` | Prepared hum recordings for future runtime work |
 
-Empty folders mean silence. Clips play through `pw-play`. The volume (`kyber volume 0-100`, default 55, or the slider in the popup) uses the same curved scale as system volume sliders, so the percentage matches how loud it sounds.
+On Omarchy, local overrides live under `~/.config/kyber-cursor/`. The current
+Omarchy helper uses the power-up, power-down and clash folders. This page covers
+the Omarchy / Hyprland integration only.
+
+The owner selected these third-party recordings for this noncommercial public
+project. Their original ownership and redistribution permissions are unverified, and
+**the code's MIT license does not cover the recordings**. File provenance and
+hashes are in [`assets/sounds/manifest.json`](assets/sounds/manifest.json).
 
 ## Troubleshooting
 Run `kyber doctor`. It checks the dependencies, the `input` group, the glow service, the hooks and the sounds, and prints the fix for anything missing. It only reads; it never changes your system. If you use an AI coding agent to set this up, point it at `AGENTS.md`.
@@ -179,6 +201,8 @@ On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests
 Constants at the top of `lib/ignite-listener` (pulse, trail, timings, volume) and `lib/build.py` (shape, glow strength) are plain numbers. `IGNITE_COLOR` in `build.py` pins the glow to a fixed color instead of the accent.
 
 ## License
-MIT.
 
-*Kyber Cursor is an independent, fan-made project created with the help of AI tools. It is not affiliated with or endorsed by the Mouse, and it bundles no film audio or artwork.*
+Source code: MIT. The selected third-party sound recordings are separate; see
+[the audio notice](assets/sounds/README.md).
+
+*Kyber Cursor is an independent, fan-made project created with the help of AI tools. It is not affiliated with or endorsed by Lucasfilm or Disney.*

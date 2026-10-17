@@ -9,9 +9,9 @@ explain it in a few words.
 
 "Kyber Cursor changes your mouse pointer into a glowing blade. It uses the color
 of your current theme, and when you hold a mouse button it lights up and leaves a
-fading trail. Sounds are optional. I'll download the plugin from GitHub first (the
-normal way to install an Omarchy plugin, no password needed). After that I won't
-download any sounds or other files; Kyber makes its own sounds. One step may need
+fading trail. I'll download the plugin from GitHub first (the normal way to
+install an Omarchy plugin, no password needed). Setup does not fetch extra files
+from other websites. One step may need
 you to install a few helper programs with your password, and I'll ask before that,
 before anything that restarts something, and before anything that changes your
 top bar."
@@ -27,10 +27,13 @@ top bar."
    yes to another: ask separately for each.
 3. **Stay in their home folder.** Do not edit system files. Do not delete anything
    that is not Kyber's.
-4. **Do not download or add sound, music, film or game audio from anywhere.**
-   Kyber makes its own original sounds. If the person wants other sounds, point
-   them to their own recordings or CC0 / royalty-free libraries, and use
-   `kyber sounds add FILE ignite|off|clash`.
+4. **Use only the existing owner-selected recordings in `assets/sounds/`.**
+   The owner has chosen this pack for the public, noncommercial project,
+   including the recorded held hums. Do not add or download more audio. The
+   recordings remain third-party material with unverified redistribution
+   permission; keep the separate provenance and rights notice with them. Do not
+   hide or misstate what the package contains. Additional local overrides use
+   `kyber sounds add FILE ignite|off|clash|swipe|hum`.
 5. If anything looks unexpected, or a command fails in a way you do not
    understand, **stop and tell the person** what happened. Do not improvise fixes;
    the only fixes you may try are the ones in the troubleshooting table below.
@@ -89,7 +92,7 @@ $PLUGIN/bin/kyber setup --yes
 
 Add `--bar` only if they said yes to the button. **Remember which flags you used;
 every re-run, now or later, must use the same ones.** This can take a minute and
-runs no `sudo`. It builds the cursor, creates the sounds and prints a short
+runs no `sudo`. It builds the cursor, copies the included recordings and prints a short
 generic checklist at the end. **Follow Step 4 below, not that printout:** never
 show or run an item the person declined.
 
@@ -191,4 +194,4 @@ If `kyber` is "not found" in a fresh terminal, use the full path
 - After a color or theme change the glow updates at once, but the real pointer
   image refreshes the next time the pointer crosses onto another window or the
   bar. This is a Hyprland limit, not a bug.
-- Contributors, not setup: see `CONTRIBUTING.md`. No copyrighted media, ever.
+- Contributors, not setup: see `CONTRIBUTING.md` and the separate audio notice in `assets/sounds/README.md`.

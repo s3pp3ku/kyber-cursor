@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.s3pp3ku.kyber-cursor",
   "name": "Kyber Cursor",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "s3pp3ku",
   "license": "MIT",
-  "description": "A glowing blade-and-hilt mouse pointer in your theme's accent color that ignites when you hold a button: glow, crossguard beams, a drag trail and optional sounds.",
+  "description": "A theme-colored blade cursor that ignites when you hold a button, with crossguard beams and a fading drag trail.",
   "kinds": [
     "service",
     "bar-widget"
@@ -17,7 +17,7 @@
   },
   "barWidget": {
     "displayName": "Kyber Cursor",
-    "description": "Sound, trail and glow color for the Kyber cursor. Click to change the options.",
+    "description": "Choose the cursor color and adjust its appearance. Click to change the options.",
     "category": "Appearance",
     "allowMultiple": false,
     "defaultSection": "right",

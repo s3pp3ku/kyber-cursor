@@ -1,9 +1,13 @@
 __pycache__/
 *.pyc
-# Kyber bundles no recordings. Sounds live in ~/.config/kyber-cursor/sounds, not here.
+/rust/target/
+/native-cursor/build/
+/test-artifacts/
+# Audio stays ignored except for the selected files shipped with this project.
 *.wav
 *.mp3
 *.ogg
 *.oga
 *.flac
 *.m4a
+!/assets/sounds/**/*.wav

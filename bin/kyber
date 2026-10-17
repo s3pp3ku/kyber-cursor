@@ -8,7 +8,7 @@
 #   kyber color theme|custom|random|#rrggbb   where the glow color comes from
 #   kyber random               roll a new random color now
 #   kyber volume 0-100         sound volume
-#   kyber sounds default|add|list|preview   the sound pack (none bundled; default generates an original one)
+#   kyber sounds default|add|list|preview   install or manage the selected sound pack
 #   kyber setup [--yes] [--bar]  one-step setup: previews by default, --yes does it (never uses sudo)
 #   kyber doctor               check dependencies and setup, and say how to fix anything
 #   kyber status         what is installed and running
@@ -281,9 +281,8 @@ cmd_config() {
 }
 
 # ---- sounds ------------------------------------------------------------------
-# Kyber bundles no recordings. `kyber sounds default` generates a small
-# original pack (synthesized by lib/make_sounds.py: sine waves and filtered
-# noise, nothing sampled from anywhere). Users can add clips of their own.
+# Setup copies the included recording files. No audio downloads or synthesis
+# occur during setup. Users can override individual sound roles.
 audio_files() { find "$1" -maxdepth 1 -type f \( -iname '*.wav' -o -iname '*.mp3' -o -iname '*.ogg' -o -iname '*.oga' -o -iname '*.flac' \) 2>/dev/null || true; }
 
 cmd_sounds() {
@@ -291,28 +290,16 @@ cmd_sounds() {
   local kind dir n f tmp
   case $sub in
     default)
-      tmp=$(mktemp -d)
-      /usr/bin/python3 "$PLUGIN_DIR/lib/make_sounds.py" "$tmp"
-      for kind in ignite off clash; do
-        dir="$STATE/sounds/$kind"; mkdir -p "$dir"
-        n=$(audio_files "$dir" | wc -l)
-        if [[ $n -gt 0 && ${1:-} != --force ]]; then
-          echo "sounds/$kind already has $n clip(s): left alone (use --force to add the default ones too)"
-          continue
-        fi
-        cp -n "$tmp/$kind"/*.wav "$dir"/
-        echo "sounds/$kind: added $(ls "$tmp/$kind" | wc -l) generated clip(s)"
-      done
-      rm -rf "$tmp" ;;
+      /usr/bin/python3 "$PLUGIN_DIR/lib/sound_pack.py" "$STATE/sounds" ;;
     add)
       kind="${2:-}"; f="${1:-}"
-      [[ -f $f && $kind =~ ^(ignite|off|clash)$ ]] || { echo "usage: kyber sounds add FILE ignite|off|clash" >&2; exit 2; }
+      [[ -f $f && $kind =~ ^(ignite|off|clash|swipe|hum)$ ]] || { echo "usage: kyber sounds add FILE ignite|off|clash|swipe|hum" >&2; exit 2; }
       case ${f,,} in *.wav|*.mp3|*.ogg|*.oga|*.flac) ;; *) echo "use a .wav, .mp3, .ogg or .flac file" >&2; exit 2 ;; esac
       mkdir -p "$STATE/sounds/$kind"
       cp -n "$f" "$STATE/sounds/$kind/"
       echo "added to sounds/$kind. Only use clips you have the right to use." ;;
     list)
-      for kind in ignite off clash; do
+      for kind in ignite off clash swipe hum; do
         n=$(audio_files "$STATE/sounds/$kind" | wc -l)
         echo "$kind: $n clip(s)"
         audio_files "$STATE/sounds/$kind" | sort | sed 's|.*/|  |'
@@ -328,7 +315,7 @@ except Exception:
 print('%.4f' % ((max(0, min(100, v)) / 100.0) ** 3))
 PY
 )
-      for kind in ignite off clash; do
+      for kind in ignite off clash swipe hum; do
         f=$(audio_files "$STATE/sounds/$kind" | sort -R | head -1)
         [[ -n $f ]] || { echo "$kind: no clips (run: kyber sounds default)"; continue; }
         echo "playing $kind: $(basename "$f")"
@@ -406,7 +393,7 @@ Kyber Cursor setup
     - make a small set of cursor files in your home folder (a 'Kyber' cursor in your theme's color)
     - add one background helper that lights the cursor while you hold a mouse button
     - make it recolor itself when you change Omarchy themes
-    - create a few simple sound effects on your computer (nothing is downloaded)
+    - copy the included sound recordings (nothing is downloaded separately)
 MSG
   if ((bar)); then echo "    - put a small Kyber button on your top bar (this edits your bar)"; fi
   echo "  Will NOT do: use sudo, download anything, change system files, or restart anything."

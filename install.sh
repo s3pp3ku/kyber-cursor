@@ -28,8 +28,8 @@ Kyber Cursor will:
   1. link  $BIN/kyber  ->  $PLUGIN_DIR/bin/kyber
   2. add   $UNIT  (systemd --user, the click glow) and start it
   3. add   theme-set + post-boot hooks in $HOOKS  (recolor on theme change)
-  4. create $STATE/sounds/{ignite,off,clash}/ and fill empty ones with a small
-     ORIGINAL sound pack generated on your machine (nothing is downloaded)
+  4. copy the included sound recordings to $STATE/sounds/
+     (old generated defaults are backed up; nothing is downloaded)
   5. build the cursor in your current accent and switch to it
 Undo everything with ./uninstall.sh.
 MSG
@@ -38,7 +38,7 @@ if [[ ${1:-} != --yes ]]; then
   [[ $ans == [yY]* ]] || exit 1
 fi
 
-mkdir -p "$BIN" "$STATE/sounds"/{ignite,off,clash} "$(dirname "$UNIT")" "$HOOKS/theme-set.d" "$HOOKS/post-boot.d"
+mkdir -p "$BIN" "$STATE/sounds"/{ignite,off,clash,swipe,hum} "$(dirname "$UNIT")" "$HOOKS/theme-set.d" "$HOOKS/post-boot.d"
 ln -sfn "$PLUGIN_DIR/bin/kyber" "$BIN/kyber"
 sed "s|@PLUGIN@|$PLUGIN_DIR|g" "$PLUGIN_DIR/lib/kyber-ignite.service" > "$UNIT"
 for d in theme-set.d post-boot.d; do

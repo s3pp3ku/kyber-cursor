@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0 — Omarchy installation update
+
+- Simplified the novice install instructions into one Omarchy plugin flow with
+  a preview before setup, clear optional glow/bar steps, and user-run dependency
+  installation when needed.
+- Updated the plugin manifest to version 1.3.0 and made its short description
+  focus on the cursor and trail.
+- The separate audio section documents the selected recordings and their
+  provenance; audio assets are not licensed by the source-code license.
+
+## Selected sound pack — 2026-10-17
+
+- Replaced generated default effects and the oscillator hum with eleven selected
+  recordings. The current Omarchy helper uses power-up, power-down and clash;
+  other prepared roles are retained for future runtime work.
+- Added the recorded hold with a shared crossfade loop and release envelope.
+- Changed setup and `sounds default` to copy the included recordings. The legacy
+  installer backs up the old generated files; custom recordings are kept.
+- Updated setup, sound documentation and provenance notes. Source code remains
+  MIT; third-party recordings have a separate notice and are not covered by the
+  code license.
+
 ## 1.2.0
 - `kyber setup`: one command for the non-privileged setup. It previews by default and only acts with `--yes`; it never uses `sudo` or restarts anything, and leaves a checklist for the person. `AGENTS.md` is rewritten as a plain-English, conservative guide so a user can just point an AI assistant at it; the README has a copy-and-paste prompt.
 - Updating from 1.0 or 1.1: run `omarchy plugin update io.github.s3pp3ku.kyber-cursor`, restart the shell once (`omarchy-restart-shell`) so the bar button loads, then `kyber doctor`. See the README's "Updating" section.

@@ -1,0 +1,115 @@
+{
+  "id": "kyber-selected-clips-v1",
+  "version": 1,
+  "scope": "Owner-selected recordings for the public, noncommercial project",
+  "authorization_date": "2026-10-17",
+  "rights": "Third-party recordings; ownership and redistribution license unverified. Not covered by the code's MIT license.",
+  "encoding": {
+    "sample_rate": 44100,
+    "channels": 1,
+    "bits": 16,
+    "format": "PCM WAV"
+  },
+  "preparation": "Decoded to mono 44100 Hz PCM; common gain 0.65; no synthesis, pitch shifting or added effects. Hum looping uses a playback crossfade.",
+  "clips": [
+    {
+      "role": "ignite",
+      "file": "ignite/lightsaber-ignite.wav",
+      "source_filename": "lightsaber-ignite.mp3",
+      "source_sha256": "211796e62b18e2c935673878b3f26d526b912b8d9074c706ebb15ed78ce8305b",
+      "sha256": "9d518b8ea7262e32fe80c82f244fff3bf61b7d3ed0c2a3bcacd56570ee08f463",
+      "seconds": 2.770045351473923,
+      "gain": 0.65
+    },
+    {
+      "role": "ignite",
+      "file": "ignite/lightsaber-ignite-burst.wav",
+      "source_filename": "lightsaber-ignite-burst.mp3",
+      "source_sha256": "6be4dfe1f0e183ec475ff3d8c51050d868f7645e242192c21cc5827de7e76f1a",
+      "sha256": "5e1316127f277e711ec0a139593dd76a0051e6fd22bfd8c18b8e0f4cc2b5e8d3",
+      "seconds": 2.246530612244898,
+      "gain": 0.65
+    },
+    {
+      "role": "ignite",
+      "file": "ignite/sith-lightsaber-1.wav",
+      "source_filename": "sith-lightsaber-1.mp3",
+      "source_sha256": "ad6b83a2b79b3c29785b4f6ac5ae55974f5d92e2e6a214ea3e0084cbe6c3ed91",
+      "sha256": "2b50b4ac0050780a881bfaa429af160fa16c5a836a2bd8a1ded7da7eb4b2a934",
+      "seconds": 1.7626303854875283,
+      "gain": 0.65
+    },
+    {
+      "role": "off",
+      "file": "off/lightsaber-off.wav",
+      "source_filename": "lightsaber-off.mp3",
+      "source_sha256": "59b576576744146ca99b5f2f54d865d2a9d724bed436e8f90442d4e813eba46a",
+      "sha256": "2a23c8f624e05b9a939ab7a48c376cafad4c000e6dc6f691440e9d98c5c28076",
+      "seconds": 1.30718820861678,
+      "gain": 0.65
+    },
+    {
+      "role": "off",
+      "file": "off/sith-deactivate-1.wav",
+      "source_filename": "sith-deactivate-1.mp3",
+      "source_sha256": "df4c3b50a5ae6cd77b272ac80fcb79fb0a449e95a27452f2acfe8b2957189433",
+      "sha256": "2c449532f395ff2220d46e009d5e48315e5ad64e9c0126aff04afb90faeb7dcf",
+      "seconds": 0.8197052154195011,
+      "gain": 0.65
+    },
+    {
+      "role": "clash",
+      "file": "clash/lightsaber-clash-02.wav",
+      "source_filename": "lightsaber-clash-02.mp3",
+      "source_sha256": "f623b5208a122d70b550502215b5e13d483fa43bea43ede3508e25be4935afbc",
+      "sha256": "516c332bf9416c146d5f80cebfa4535cc79e9fa374dbe56b00a6f8fb5f9f7108",
+      "seconds": 0.9173469387755102,
+      "gain": 0.65
+    },
+    {
+      "role": "clash",
+      "file": "clash/lightsaber-clash-04.wav",
+      "source_filename": "lightsaber-clash-04.mp3",
+      "source_sha256": "785511f2f077671b8ff01de6671998affb94bbf82820573788d433a1ba021bd8",
+      "sha256": "d89141c2f7236e2db1f72107bec009504b6c85093a54876d1d01217670e697e5",
+      "seconds": 1.0880045351473924,
+      "gain": 0.65
+    },
+    {
+      "role": "swipe",
+      "file": "swipe/lightsaber-whoosh-01.wav",
+      "source_filename": "lightsaber-whoosh-01.mp3",
+      "source_sha256": "c321a5de1314d60b3d89165772b5e0002d070fddff9cac579ef9e37922e058eb",
+      "sha256": "eef0000c55e799003547f1a34a316a27bf8383760c439745b366e1159a3f4c31",
+      "seconds": 0.8960090702947846,
+      "gain": 0.65
+    },
+    {
+      "role": "swipe",
+      "file": "swipe/lightsaber-whoosh-04.wav",
+      "source_filename": "lightsaber-whoosh-04.mp3",
+      "source_sha256": "a429f81e4a4b3f017124cfc359ed4caa76a3ad97f897222c6140662e8ff22646",
+      "sha256": "51bb4c60922f076dfe113755717213e71061c21a569d594d23799d4688b37c9a",
+      "seconds": 1.024013605442177,
+      "gain": 0.65
+    },
+    {
+      "role": "hum",
+      "file": "hum/lightsaber-hum.wav",
+      "source_filename": "lightsaber-hum.mp3",
+      "source_sha256": "cf4c20524bbc9204bbd103b6ff7a59d2845d2865ac9225024c38b48c1461772d",
+      "sha256": "db847e044f1c24178af3a2c57f6f20fd88962fcb575916147a5dfdcd3e799549",
+      "seconds": 14.303922902494332,
+      "gain": 0.65
+    },
+    {
+      "role": "hum",
+      "file": "hum/lightsaber-hummm.wav",
+      "source_filename": "lightsaber-hummm.mp3",
+      "source_sha256": "8ef21b540334df8dcf716ec0ff75abe2ef3b51ec948a49e4c5740a9849a1a735",
+      "sha256": "8997a98ec4f8c6d1eb48e3f56d43148cc6d1d1a24511783d87019d73719867cb",
+      "seconds": 5.067755102040817,
+      "gain": 0.65
+    }
+  ]
+}
