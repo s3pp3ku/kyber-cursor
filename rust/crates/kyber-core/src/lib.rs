@@ -6,7 +6,6 @@
 //! Ported from `lib/build.py`, `lib/make_sounds.py` and `bin/kyber`
 //! (color modes, random picker, volume curve, Xcursor writer).
 
-pub mod blade_audio;
 pub mod color;
 pub mod config;
 pub mod geometry;

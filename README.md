@@ -27,7 +27,7 @@ Every cursor role, generated from the accent:
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
-- Linux Rust runtime sources are included under [`rust/`](rust/README.md), with a Hyprland compositor bridge in [`native-cursor/`](native-cursor/README.md). The Rust runtime is currently an opt-in maintainer deployment; a fresh novice setup still uses the established Python helper.
+- The default Omarchy setup builds the Rust cursor and glow runtime. Its standard mode uses Wayland layer-shell and read-only mouse events; it does not compile or load the experimental Hyprland C++ bridge.
 
 ## Easiest way: let an AI assistant set it up
 New to Linux? You don't have to type any commands yourself. If you use an AI coding assistant (Claude Code, Codex, Gemini CLI and similar), paste this to it:
@@ -37,14 +37,14 @@ New to Linux? You don't have to type any commands yourself. If you use an AI cod
 What happens next, in plain words:
 1. The assistant asks, then downloads Kyber from GitHub and adds it to Omarchy's plugin list (the normal way to install a plugin). No password.
 2. It shows you a short **preview** of what it is about to do, and waits for your OK.
-3. It sets up the cursor and helper. It does not download extra files.
+3. It builds the Rust cursor and helper. The first build fetches Rust code dependencies from crates.io; no sound files are fetched separately.
 4. It then goes through a short checklist **with you**, asking before each item:
    - one command that installs a few helper programs (needs your password, so *you* run it);
    - an **optional** permission for the click glow (explained below);
    - one restart of the desktop shell, only if you chose the optional Kyber button on your top bar.
 5. It checks that everything works and tells you how to try it: hold the left mouse button for a second.
 
-The assistant is told never to run `sudo` for you, to use only the files included with the plugin, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
+The assistant is told never to run `sudo` for you, to use only the included audio, and to stop and ask if anything looks odd. You can say no to anything and still keep the cursor.
 
 **The one permission worth understanding:** the click glow needs to know when you press a mouse button, anywhere on screen. Linux only tells that to programs you have put in a group called `input`. The catch is that the permission belongs to *you*, so any program you run could then also read your keyboard and mouse input. If you are not comfortable with that, skip it: you still get the cursor in your theme's color, and only the glow, trail and sounds stay off. (More in "Is this safe?" below.)
 
@@ -58,23 +58,19 @@ Prefer to do it yourself? Use the Install section below, or run `kyber setup` fr
 
 **What's the honest catch?** The list applies to *you*, so any program you run could also listen at that door, **including your keyboard**. That is how Linux works, not something this plugin does, but it is a real trade-off, so don't add yourself unless you are comfortable with it.
 
-**What does the default helper actually do?** The Python helper checks whether the left, right or middle button is down. It ignores keys and does not block or change clicks. The experimental Rust runtime uses the local Hyprland bridge for pointer events and does not open `/dev/input`; see [the Rust runtime notes](rust/README.md).
+**What does the helper actually do?** The Rust helper reads mouse-button events from `/dev/input` without grabbing the devices. It ignores keyboard events and does not block or change clicks. Its click-through layer-shell window draws the glow and trail.
 
 **Can I skip the group?** Yes. Without it you still get the cursor in your theme's accent. The click glow, trail and sounds simply stay off. The installer detects this and doesn't start the helper.
 
-**Could a command here be hiding something?** The installer never runs `sudo` and never downloads anything. The one `sudo` command is only *printed* for you to read and run yourself. It asks before every change, and `./uninstall.sh` reverses all of it. Don't take my word for it. This searches the code for anything that downloads, talks to the internet or runs hidden code, and it should print nothing:
+**Could a command here be hiding something?** The installer never runs `sudo`. The one `sudo` command is only *printed* for you to read and run yourself. Cargo fetches library source during the first build; Kyber makes no network requests at runtime, and it never fetches audio. `./uninstall.sh` reverses the install and keeps your sound overrides.
 
-```
-grep -nE "curl|wget|urllib|AF_INET|import requests|\beval\b|base64" bin/* lib/* install.sh uninstall.sh Service.qml
-```
-
-(The only socket the helper opens is the local one Hyprland provides, to ask where the cursor is.)
+At runtime, the helper uses local Wayland and Hyprland sockets only.
 
 ## Install on Omarchy
 
-Kyber has two parts: Omarchy downloads the plugin files, then Kyber's setup
-command installs the cursor and background helper. Adding the plugin does not
-run setup or install software with your password.
+Omarchy downloads the plugin files. Kyber's setup then builds the Rust cursor
+and background helper from that checkout. Adding the plugin does not run setup
+or install software with your password.
 
 1. Open a terminal with **Super + Return** and add the plugin:
 
@@ -94,9 +90,11 @@ run setup or install software with your password.
    ~/.config/omarchy/plugins/io.github.s3pp3ku.kyber-cursor/bin/kyber setup --yes
    ```
 
-If helper programs are missing, setup prints the Arch command to install them.
-It needs your password, so run that command yourself in the terminal, then run
-the same setup command again. Kyber never runs `sudo` for you.
+If Rust tools or system libraries are missing, setup prints the Arch command to
+install them. It needs your password, so run that command yourself in the
+terminal, then run the same setup command again. Kyber never runs `sudo` for
+you. On the first build Cargo downloads code dependencies from crates.io; this
+can take several minutes. No sound files are downloaded separately.
 
 The cursor works without the optional click glow. That feature needs membership
 in the Linux `input` group, which is a computer-wide permission; setup explains
@@ -142,9 +140,8 @@ o.bind("F11", "Toggle drag trail", "kyber trail")
 
 ## Sounds
 
-The Omarchy package includes the selected local recordings for power-up,
-power-down and clash effects. The prepared audio folder also contains movement
-and held-hum recordings for future runtime work.
+The Rust runtime uses the selected recordings for power-up, power-down, clash,
+movement and held-hum sounds.
 
 The package uses mono PCM16 / 44.1 kHz WAVs from
 [`assets/sounds/`](assets/sounds/README.md). No Downloads folder, audio generator,
@@ -153,26 +150,24 @@ original MP3s were decoded with a common gain for headroom.
 
 ```sh
 kyber sounds default                     # copy the included recordings
-kyber sounds preview                     # listen (legacy Linux wrapper)
+kyber sounds preview                     # listen to the local sound pack
 kyber sounds list                        # list local sound files
 kyber sounds add FILE ignite|off|clash|swipe|hum
 ```
 
-Additional local WAV / MP3 / Ogg / FLAC recordings can override each role. The
-legacy installer's `sounds default` saves old generated defaults in a dated
-backup and retains other personal recordings.
+Additional local WAV / MP3 / Ogg / FLAC recordings can override each role.
+`sounds default` fills missing bundled files and does not replace existing
+personal recordings.
 
 | Sound folder | Role |
 | --- | --- |
 | `sounds/ignite/` | One power-up per hold |
 | `sounds/off/` | Power-down on release in All mode |
 | `sounds/clash/` | Double-click clashes |
-| `sounds/swipe/` | Movement swipes |
-| `sounds/hum/` | Prepared hum recordings for future runtime work |
+| `sounds/swipe/` | Movement swipes while holding the blade |
+| `sounds/hum/` | Recorded hum after the power-up |
 
-On Omarchy, local overrides live under `~/.config/kyber-cursor/`. The default
-Python helper currently uses the power-up, power-down and clash folders. The
-Rust runtime also uses the recorded held hum and movement swipes. This page
+On Omarchy, local overrides live under `~/.config/kyber-cursor/`. This page
 covers the Omarchy / Hyprland integration only.
 
 The owner selected these third-party recordings for this noncommercial public
@@ -184,7 +179,7 @@ hashes are in [`assets/sounds/manifest.json`](assets/sounds/manifest.json).
 Run `kyber doctor`. It checks the dependencies, the `input` group, the glow service, the hooks and the sounds, and prints the fix for anything missing. It only reads; it never changes your system. If you use an AI coding agent to set this up, point it at `AGENTS.md`.
 
 ## How it works, and its limits
-On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A small GTK4 layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched, so pointer latency is unchanged.
+On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A Rust Wayland layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched.
 
 - The glow and trail are made for dark and mid-tone backgrounds. On very light pages they are subtler (a defined but faint halo), so they don't look like the demo there.
 - The overlay doesn't know the current cursor shape, so the glow also appears around an I-beam during a text drag.
@@ -200,7 +195,9 @@ On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests
 - The `input` group lets any program you run read raw input events from all your input devices (including keyboards). Only add yourself if you accept that.
 
 ## Customizing
-Constants at the top of `lib/ignite-listener` (pulse, trail, timings, volume) and `lib/build.py` (shape, glow strength) are plain numbers. `IGNITE_COLOR` in `build.py` pins the glow to a fixed color instead of the accent.
+The Rust renderer, timings, trail and audio implementation live under
+`rust/crates/`. The older Python sources remain for comparison and migration
+reference; the standard installer runs the Rust CLI and helper.
 
 ## License
 

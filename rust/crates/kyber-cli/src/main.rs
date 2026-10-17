@@ -1,9 +1,6 @@
-//! `kyber` command (step 1): picker-first settings that interop with the
-//! existing `~/.config/kyber-cursor` file layout, so the Rust CLI can run
-//! alongside the current bash `bin/kyber` without fighting it.
-//!
-//! Native daily mode also owns Linux apply/off, sound/volume controls and doctor.
-//! Setup/uninstall and extra sound-file management retain their existing wrapper.
+//! Linux `kyber` command for the existing `~/.config/kyber-cursor` settings
+//! layout. The shell wrapper handles preview/confirmation and delegates normal
+//! commands here after the Rust runtime is installed.
 
 use std::path::PathBuf;
 
@@ -194,7 +191,8 @@ fn cmd_trail(args: &[String]) {
         "toggle" => !load_config().trail,
         _ => usage(),
     };
-    if enabled && state_dir().join("native-runtime").exists() {
+    let runtime = read_file("native-runtime");
+    if enabled && !runtime.is_empty() && runtime != "overlay" {
         #[cfg(target_os = "linux")]
         if !native_trails_available() {
             eprintln!("The running native cursor bridge needs the trail update first.");
@@ -217,34 +215,60 @@ fn native_trails_available() -> bool {
 
 #[cfg(target_os = "linux")]
 fn cmd_doctor() {
+    let runtime_mode = read_file("native-runtime");
+    let uses_native_bridge = !runtime_mode.is_empty() && runtime_mode != "overlay";
+    let in_input_group = std::process::Command::new("id")
+        .arg("-nG")
+        .output()
+        .is_ok_and(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout)
+                    .split_whitespace()
+                    .any(|group| group == "input")
+        });
+    let click_glow_off_expected = !uses_native_bridge && !in_input_group;
     let service = std::process::Command::new("systemctl")
         .args(["--user", "is-active", "kyber-ignite.service"])
         .output();
-    let native = std::process::Command::new("hyprctl")
-        .args(["kybernative", "status"])
-        .output();
     let service_ok = service.is_ok_and(|o| o.status.success());
-    let native_ok = native.is_ok_and(|o| {
-        o.status.success() && String::from_utf8_lossy(&o.stdout).contains("protocol=2")
-    });
-    println!(
-        "Rust native runtime: {}",
-        if service_ok { "running" } else { "not running" }
-    );
-    println!(
-        "Native cursor bridge: {}",
-        if native_ok { "loaded" } else { "not loaded" }
-    );
-    println!("Input: compositor button events (no input-group permission needed)");
+    let native_ok = if uses_native_bridge {
+        std::process::Command::new("hyprctl")
+            .args(["kybernative", "status"])
+            .output()
+            .is_ok_and(|o| {
+                o.status.success() && String::from_utf8_lossy(&o.stdout).contains("protocol=2")
+            })
+    } else {
+        true
+    };
+    println!("Rust runtime: {}", if service_ok { "running" } else { "not running" });
+    if uses_native_bridge {
+        println!(
+            "Native cursor bridge: {}",
+            if native_ok { "loaded" } else { "not loaded" }
+        );
+        println!("Input: compositor button events (no input-group permission needed)");
+    } else {
+        println!("Input: read-only pointer events from /dev/input");
+        if click_glow_off_expected {
+            println!("Click glow: optional and off (this session is not in the input group)");
+        } else {
+            println!("Input permission: active through the input group");
+        }
+    }
     let cfg = load_config();
     println!("Sound: {:?}, volume {}%", cfg.sound, cfg.volume);
-    if native_trails_available() {
+    if !uses_native_bridge || native_trails_available() {
         println!("Movement trails: {}", if cfg.trail { "on" } else { "off" });
     } else {
         println!("Movement trails: native bridge update needed");
     }
-    if service_ok && native_ok {
-        println!("Everything checks out.");
+    if (service_ok || click_glow_off_expected) && native_ok {
+        if click_glow_off_expected {
+            println!("Everything checks out. (The optional click glow is off.)");
+        } else {
+            println!("Everything checks out.");
+        }
     } else {
         eprintln!("Native runtime needs attention; check kyber-ignite.service.");
         std::process::exit(1);
@@ -382,9 +406,11 @@ fn cmd_apply() {
 #[cfg(target_os = "linux")]
 fn cmd_off() {
     let _ = std::fs::remove_file(state_dir().join("active"));
-    let _ = std::process::Command::new("hyprctl")
-        .args(["kybernative", "stop"])
-        .output();
+    if read_file("native-runtime") != "overlay" {
+        let _ = std::process::Command::new("hyprctl")
+            .args(["kybernative", "stop"])
+            .output();
+    }
     set_cursor("Adwaita");
     println!("Kyber off: back to the Adwaita cursor.");
 }
@@ -412,12 +438,92 @@ fn cmd_sounds(args: &[String]) {
         "list" => {
             for kind in sound_pack::ROLES {
                 let d = dir.join(kind);
-                let n = std::fs::read_dir(&d).map(|r| r.count()).unwrap_or(0);
-                println!("{kind}: {n} clip(s)");
+                let mut files: Vec<_> = std::fs::read_dir(&d)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_file())
+                    .collect();
+                files.sort();
+                println!("{kind}: {} clip(s)", files.len());
+                for path in files {
+                    println!("  {}", path.file_name().unwrap_or_default().to_string_lossy());
+                }
+            }
+        }
+        "add" => {
+            let Some(source) = args.get(1).map(std::path::Path::new) else {
+                eprintln!("usage: kyber sounds add FILE ignite|off|clash|swipe|hum");
+                std::process::exit(2);
+            };
+            let Some(role) = args.get(2).map(String::as_str) else {
+                eprintln!("usage: kyber sounds add FILE ignite|off|clash|swipe|hum");
+                std::process::exit(2);
+            };
+            let extension_ok = source
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| matches!(value.to_ascii_lowercase().as_str(), "wav" | "mp3" | "ogg" | "oga" | "flac"));
+            if !sound_pack::ROLES.contains(&role) || !source.is_file() || !extension_ok {
+                eprintln!("use an existing WAV, MP3, Ogg or FLAC file and a valid sound role");
+                std::process::exit(2);
+            }
+            let Some(name) = source.file_name() else {
+                eprintln!("sound file must have a filename");
+                std::process::exit(2);
+            };
+            let destination_dir = dir.join(role);
+            if let Err(error) = std::fs::create_dir_all(&destination_dir) {
+                eprintln!("kyber: cannot create sound folder: {error}");
+                std::process::exit(1);
+            }
+            let destination = destination_dir.join(name);
+            if destination.exists() {
+                eprintln!("kyber: {} already exists; no file replaced", destination.display());
+                std::process::exit(1);
+            }
+            if let Err(error) = std::fs::copy(source, &destination) {
+                eprintln!("kyber: cannot add sound: {error}");
+                std::process::exit(1);
+            }
+            println!("Added {} to sounds/{role}.", name.to_string_lossy());
+        }
+        "preview" => {
+            let gain = (load_config().volume as f64 / 100.0).powi(3);
+            let mut played = false;
+            for role in sound_pack::ROLES {
+                let mut files: Vec<_> = std::fs::read_dir(dir.join(role))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_file())
+                    .collect();
+                files.sort();
+                if let Some(path) = files.first() {
+                    println!("Playing {role}: {}", path.file_name().unwrap_or_default().to_string_lossy());
+                    let status = std::process::Command::new("pw-play")
+                        .arg("--volume")
+                        .arg(format!("{gain:.4}"))
+                        .arg(path)
+                        .status();
+                    if !status.is_ok_and(|status| status.success()) {
+                        eprintln!("kyber: could not play {role}; check PipeWire and pw-play");
+                        std::process::exit(1);
+                    }
+                    played = true;
+                } else {
+                    println!("{role}: no local clips");
+                }
+            }
+            if !played {
+                eprintln!("No local clips found. Run: kyber sounds default");
+                std::process::exit(1);
             }
         }
         _ => {
-            eprintln!("usage: kyber sounds default | list");
+            eprintln!("usage: kyber sounds default | add FILE ROLE | list | preview");
             std::process::exit(2);
         }
     }

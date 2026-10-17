@@ -10,9 +10,9 @@ explain it in a few words.
 "Kyber Cursor changes your mouse pointer into a glowing blade. It uses the color
 of your current theme, and when you hold a mouse button it lights up and leaves a
 fading trail. I'll download the plugin from GitHub first (the normal way to
-install an Omarchy plugin, no password needed). Setup does not fetch extra files
-from other websites. One step may need
-you to install a few helper programs with your password, and I'll ask before that,
+install an Omarchy plugin, no password needed). The first Rust build fetches
+code libraries from crates.io; the sound files are already in the plugin. One
+step may need you to install a few helper programs with your password, and I'll ask before that,
 before anything that restarts something, and before anything that changes your
 top bar."
 
@@ -92,7 +92,7 @@ $PLUGIN/bin/kyber setup --yes
 
 Add `--bar` only if they said yes to the button. **Remember which flags you used;
 every re-run, now or later, must use the same ones.** This can take a minute and
-runs no `sudo`. It builds the cursor, copies the included recordings and prints a short
+runs no `sudo`. It builds the Rust cursor and helper, copies the included recordings, and prints a short
 generic checklist at the end. **Follow Step 4 below, not that printout:** never
 show or run an item the person declined.
 

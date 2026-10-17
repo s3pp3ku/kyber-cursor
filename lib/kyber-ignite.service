@@ -1,19 +1,14 @@
 [Unit]
-Description=Kyber cursor: ignite on click
+Description=Kyber Cursor Rust glow and sound runtime
 After=graphical-session.target
 PartOf=graphical-session.target
-# Not in the 'input' group yet? Then skip quietly (no failing, no restart loop).
-# After joining the group and restarting, it starts by itself.
 ConditionGroup=input
 
 [Service]
 Type=simple
-Environment=LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so
-ExecStart=@PLUGIN@/lib/ignite-listener
+ExecStart=%h/.local/share/kyber-cursor/rust/kyber-ignite
 Restart=on-failure
 RestartSec=2
-# The listener only reads button events and draws a click-through overlay,
-# so it needs no writes and no privileges.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only

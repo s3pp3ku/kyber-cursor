@@ -7,10 +7,11 @@ Thanks for helping. A few ground rules keep the project safe to share:
   separate audio notice with packages. The recordings have unverified
   ownership/redistribution permission and are not licensed by the code's MIT
   license. Do not add other third-party media or remove the rights notice.
-- Keep the installer opt-in, free of `sudo` and free of downloads.
-- Before opening a pull request, run `kyber doctor` and, for build changes,
-  compare the output of `lib/build.py` before and after (it should stay
-  byte-identical unless the change is meant to alter the look).
+- Keep setup opt-in and free of `sudo`. On the first build, Cargo downloads
+  Rust library dependencies from crates.io; do not add audio downloads.
+- Before opening a pull request, run `cargo test --workspace --locked` from
+  `rust/` and `kyber doctor`. For rendering changes, inspect generated output
+  against the existing cursor appearance.
 - Tell us what you tested on (Hyprland and Omarchy versions, display scale).
 
 ## Handy when hacking on Kyber

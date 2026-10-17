@@ -3,7 +3,8 @@ name = "kyber-core"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Portable core for Kyber Cursor: color math, config, sound synth, Xcursor writer, cursor geometry and overlay metadata. No OS-specific code."
+description = "Linux Kyber core: cursor rendering, color, settings, Xcursor and recorded audio."
+autoexamples = false
 
 [dependencies]
 serde = { workspace = true }

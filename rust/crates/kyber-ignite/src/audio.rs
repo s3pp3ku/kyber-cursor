@@ -523,7 +523,7 @@ mod tests {
             pick_next(&mut rng, &files[..1], Some(&files[0])),
             Some(files[0].clone())
         );
-        assert_eq!(pick_next(&mut rng, &[], None), None);
+        assert_eq!(pick_next::<PathBuf>(&mut rng, &[], None), None);
     }
     #[test]
     fn cubic_gain_matches_python() {

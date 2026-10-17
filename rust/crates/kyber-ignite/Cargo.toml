@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Hold-to-ignite overlay daemon: evdev input, layer-shell overlay, rodio audio (Linux/Wayland)."
+autoexamples = false
 
 [[bin]]
 name = "kyber-ignite"

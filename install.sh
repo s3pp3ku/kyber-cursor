@@ -1,73 +1,80 @@
 #!/usr/bin/env bash
-# Opt-in installer for Kyber Cursor. Nothing is changed until you run this,
-# and every step is listed first. No sudo, no network.
+# Build and install Kyber's Linux Rust runtime. This script never runs sudo.
 #   ./install.sh            install
 #   ./install.sh --yes      install without the confirmation prompt
 set -euo pipefail
 
 PLUGIN_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 STATE="${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor"
-UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/kyber-ignite.service"
-HOOKS="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/hooks"
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+UNIT="$CFG/systemd/user/kyber-ignite.service"
+HOOKS="$CFG/omarchy/hooks"
 BIN="$HOME/.local/bin"
+RUNTIME="$HOME/.local/share/kyber-cursor/rust"
 
 missing=()
-/usr/bin/python3 -c 'import gi, cairo, PIL, cairosvg, evdev
-gi.require_version("Gtk","4.0"); gi.require_version("Gtk4LayerShell","1.0")' 2>/dev/null || missing+=("python: gobject, cairo, pillow, cairosvg, evdev + gtk4 + gtk4-layer-shell")
-command -v grim >/dev/null || missing+=("grim")
-command -v hyprctl >/dev/null || missing+=("hyprctl (Hyprland)")
-[[ -e /usr/lib/libgtk4-layer-shell.so ]] || missing+=("/usr/lib/libgtk4-layer-shell.so (gtk4-layer-shell)")
+for command_name in cargo rustc pkg-config hyprctl grim pw-play; do
+  command -v "$command_name" >/dev/null || missing+=("$command_name")
+done
+if command -v pkg-config >/dev/null; then
+  for library in alsa gbm libdrm wayland-client xkbcommon; do
+    pkg-config --exists "$library" || missing+=("$library development files")
+  done
+fi
 if ((${#missing[@]})); then
-  printf 'Missing: %s\n' "${missing[@]}" >&2
-  echo "Arch: sudo pacman -S --needed python-gobject python-cairo python-pillow python-cairosvg python-evdev gtk4 gtk4-layer-shell grim pipewire" >&2
-  exit 1
+  printf 'Missing build/runtime requirements: %s\n' "${missing[*]}" >&2
+  echo "Arch/Omarchy: sudo pacman -S --needed rust pkgconf alsa-lib mesa libdrm wayland libxkbcommon grim pipewire" >&2
+  exit 3
 fi
 
 cat <<MSG
 Kyber Cursor will:
-  1. link  $BIN/kyber  ->  $PLUGIN_DIR/bin/kyber
-  2. add   $UNIT  (systemd --user, the click glow) and start it
-  3. add   theme-set + post-boot hooks in $HOOKS  (recolor on theme change)
-  4. copy the included sound recordings to $STATE/sounds/
-     (old generated defaults are backed up; nothing is downloaded)
-  5. build the cursor in your current accent and switch to it
-Undo everything with ./uninstall.sh.
+  1. build the Rust cursor and glow runtime from the included source
+     (the first build downloads Rust crate dependencies from crates.io)
+  2. install its two Rust programs under $RUNTIME
+  3. install a user service and Omarchy theme/boot hooks
+  4. build and apply the cursor, then copy the included recordings
+  5. start the click glow if your session can read mouse events
+
+It will not use sudo, change system files, alter your top bar, or restart
+your desktop. Undo everything with ./uninstall.sh. Your sound overrides are kept.
 MSG
 if [[ ${1:-} != --yes ]]; then
-  read -r -p "Continue? [y/N] " ans
-  [[ $ans == [yY]* ]] || exit 1
+  read -r -p "Continue? [y/N] " answer
+  [[ $answer == [yY]* ]] || exit 1
 fi
 
-mkdir -p "$BIN" "$STATE/sounds"/{ignite,off,clash,swipe,hum} "$(dirname "$UNIT")" "$HOOKS/theme-set.d" "$HOOKS/post-boot.d"
+mkdir -p "$BIN" "$RUNTIME" "$STATE" "$(dirname "$UNIT")" \
+  "$HOOKS/theme-set.d" "$HOOKS/post-boot.d"
+echo "Building Kyber's Rust runtime. The first build can take several minutes."
+cargo build --release --locked --manifest-path "$PLUGIN_DIR/rust/Cargo.toml" \
+  -p kyber-cli -p kyber-ignite
+install -m 755 "$PLUGIN_DIR/rust/target/release/kyber" "$RUNTIME/kyber"
+install -m 755 "$PLUGIN_DIR/rust/target/release/kyber-ignite" "$RUNTIME/kyber-ignite"
+
+systemctl --user stop kyber-ignite.service 2>/dev/null || true
+NATIVE_DROPIN="$CFG/systemd/user/kyber-ignite.service.d/90-rust-native.conf"
+if [[ -f $NATIVE_DROPIN ]]; then
+  backup="$HOME/.local/share/kyber-cursor/backups/native-runtime-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$backup"
+  cp -a "$NATIVE_DROPIN" "$backup/90-rust-native.conf"
+  rm -f "$NATIVE_DROPIN"
+fi
 ln -sfn "$PLUGIN_DIR/bin/kyber" "$BIN/kyber"
-sed "s|@PLUGIN@|$PLUGIN_DIR|g" "$PLUGIN_DIR/lib/kyber-ignite.service" > "$UNIT"
-for d in theme-set.d post-boot.d; do
-  sed "s|@PLUGIN@|$PLUGIN_DIR|g" "$PLUGIN_DIR/lib/hook.sh" > "$HOOKS/$d/kyber-cursor.sh"
-  chmod +x "$HOOKS/$d/kyber-cursor.sh"
+install -m 644 "$PLUGIN_DIR/lib/kyber-ignite.service" "$UNIT"
+for hook_dir in theme-set.d post-boot.d; do
+  sed "s|@PLUGIN@|$PLUGIN_DIR|g" "$PLUGIN_DIR/lib/hook.sh" > "$HOOKS/$hook_dir/kyber-cursor.sh"
+  chmod 755 "$HOOKS/$hook_dir/kyber-cursor.sh"
 done
-"$PLUGIN_DIR/bin/kyber" apply
-"$PLUGIN_DIR/bin/kyber" sounds default
+printf 'overlay\n' > "$STATE/native-runtime"
+"$BIN/kyber" apply
+"$BIN/kyber" sounds default
+
 systemctl --user daemon-reload
-# Always enable it: the unit has ConditionGroup=input, so without the group it is
-# simply skipped, and it starts by itself once the user has joined the group and
-# restarted. Start it right now only if the group is already active.
 systemctl --user enable kyber-ignite.service
-if id -nG | tr ' ' '\n' | grep -qx input; then
+if id -nG | tr ' ' '\n' | grep -qx input && compgen -G "/dev/input/event*" >/dev/null && [[ -r $(ls /dev/input/event* 2>/dev/null | head -1) ]]; then
   systemctl --user start kyber-ignite.service
 else
-  echo "The click glow will start by itself after you join the 'input' group and restart (see below)."
+  echo "The cursor is installed. The click glow starts after mouse permission is enabled and the computer is restarted."
 fi
-
-if ! id -nG | tr ' ' '\n' | grep -qx input; then
-  cat <<MSG
-
-The click glow reads mouse buttons from /dev/input, which needs the 'input'
-group. This installer does not use sudo, so run this yourself, then reboot
-(a logout is not enough if systemd --user lingers):
-    sudo usermod -aG input "$USER"
-After you restart the computer the click glow turns on by itself; nothing else to run.
-Without it you still get the cursor in your theme's accent; only the click
-glow, trail and sounds stay off.
-MSG
-fi
-if id -nG | tr ' ' '\n' | grep -qx input; then echo "Done. Try holding a mouse button for a second. 'kyber status' shows the state."; else echo "Done. Your cursor is set up. 'kyber status' shows the state."; fi
+echo "Done. Run 'kyber doctor' to check the installation."

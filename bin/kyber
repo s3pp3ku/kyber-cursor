@@ -21,13 +21,16 @@ ICONS="$HOME/.local/share/icons"
 BUILDS="$ICONS/.kyber-builds"
 STATE="${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor"
 
-# The Rust daily runtime is selected only when its managed install marker and
-# binaries are present. Setup and custom sound-file management stay in this
-# wrapper so existing installations retain their established setup flow.
+# The Rust runtime is selected when its managed install marker and binaries
+# are present. Setup preview/confirmation remains in this wrapper.
 RUST_KYBER="$HOME/.local/share/kyber-cursor/rust/kyber"
 if [[ -f "$STATE/native-runtime" && -x "$RUST_KYBER" ]]; then
   case "${1:-}" in
     apply|off|color|random|sound|trail|volume|config|status|doctor) exec "$RUST_KYBER" "$@" ;;
+    sounds)
+      case "${2:-}" in
+        default|list|preview|add) shift; exec "$RUST_KYBER" "$@" ;;
+      esac ;;
   esac
 fi
 
@@ -401,12 +404,13 @@ cmd_setup() {
 Kyber Cursor setup
   Will do:
     - make a small set of cursor files in your home folder (a 'Kyber' cursor in your theme's color)
-    - add one background helper that lights the cursor while you hold a mouse button
+    - build and install the Rust background helper that lights the cursor while you hold a mouse button
     - make it recolor itself when you change Omarchy themes
-    - copy the included sound recordings (nothing is downloaded separately)
+    - copy the included sound recordings; no audio is downloaded
+    - on the first build, Cargo downloads required Rust libraries from crates.io
 MSG
   if ((bar)); then echo "    - put a small Kyber button on your top bar (this edits your bar)"; fi
-  echo "  Will NOT do: use sudo, download anything, change system files, or restart anything."
+  echo "  Will NOT do: use sudo, download audio, change system files, or restart the desktop."
   if ((! yes)); then
     echo
     echo "That was only a preview. To go ahead: $PLUGIN_DIR/bin/kyber setup --yes   (add --bar for the bar button)"
@@ -416,19 +420,17 @@ MSG
   ((bar)) && opts="--yes --bar"
   echo
   echo "Checking what Kyber needs..."
-  if ! /usr/bin/python3 -c 'import gi, cairo, PIL, cairosvg, evdev
-gi.require_version("Gtk","4.0"); gi.require_version("Gtk4LayerShell","1.0")' 2>/dev/null; then missing=1; fi
-  command -v grim >/dev/null || missing=1
-  command -v hyprctl >/dev/null || missing=1
-  command -v pw-play >/dev/null || missing=1
-  [[ -e /usr/lib/libgtk4-layer-shell.so ]] || missing=1
+  for c in cargo rustc pkg-config grim hyprctl pw-play; do command -v "$c" >/dev/null || missing=1; done
+  if command -v pkg-config >/dev/null; then
+    for library in alsa gbm libdrm wayland-client xkbcommon; do pkg-config --exists "$library" || missing=1; done
+  fi
   if ((missing)); then
     cat <<MSG
 
 A few programs Kyber needs are not installed yet. This one needs your computer's
 password, so please run it yourself (an assistant should not run it for you):
 
-  sudo pacman -S --needed python-gobject python-cairo python-pillow python-cairosvg python-evdev gtk4 gtk4-layer-shell grim pipewire
+  sudo pacman -S --needed rust pkgconf alsa-lib mesa libdrm wayland libxkbcommon grim pipewire
 
 Then run this again, with the same options:  $PLUGIN_DIR/bin/kyber setup $opts
 MSG
@@ -448,7 +450,7 @@ MSG
     echo "  $n. (Optional, for the click glow) Allow Kyber to see mouse clicks. This needs your password and a restart,"
     echo "     and lets programs you run read raw input, including the keyboard. Only do it if you are comfortable with that:"
     echo "       sudo usermod -aG input \"$USER\"     then restart the computer."
-    echo "     Without this you still get the cursor and its color; only the glow, trail and sounds stay off."
+    echo "     Without this you still get the cursor and its color; the click glow, trail and sounds stay off."
     n=$((n + 1))
   fi
   if ((bar)); then
