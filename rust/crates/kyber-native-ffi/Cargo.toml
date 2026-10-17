@@ -1,0 +1,12 @@
+[package]
+name = "kyber-native-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Small C ABI for the portable Rust trail renderer; no desktop or input APIs."
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+kyber-core = { workspace = true }

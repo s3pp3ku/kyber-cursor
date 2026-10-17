@@ -1,0 +1,14 @@
+[package]
+name = "kyber-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Linux/Hyprland Kyber command for cursor, color, sound, trail and status controls."
+
+[[bin]]
+name = "kyber"
+path = "src/main.rs"
+
+[dependencies]
+kyber-core = { workspace = true }
+serde_json = { workspace = true }

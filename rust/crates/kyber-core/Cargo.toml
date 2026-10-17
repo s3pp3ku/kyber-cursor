@@ -1,0 +1,12 @@
+[package]
+name = "kyber-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Portable core for Kyber Cursor: color math, config, sound synth, Xcursor writer, cursor geometry and overlay metadata. No OS-specific code."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+resvg = "0.45"
+image = "0.25"

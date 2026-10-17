@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.s3pp3ku.kyber-cursor",
   "name": "Kyber Cursor",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "s3pp3ku",
   "license": "MIT",
   "description": "A theme-colored blade cursor that ignites when you hold a button, with crossguard beams and a fading drag trail.",

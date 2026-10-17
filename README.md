@@ -27,6 +27,7 @@ Every cursor role, generated from the accent:
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
+- Linux Rust runtime sources are included under [`rust/`](rust/README.md), with a Hyprland compositor bridge in [`native-cursor/`](native-cursor/README.md). The Rust runtime is currently an opt-in maintainer deployment; a fresh novice setup still uses the established Python helper.
 
 ## Easiest way: let an AI assistant set it up
 New to Linux? You don't have to type any commands yourself. If you use an AI coding assistant (Claude Code, Codex, Gemini CLI and similar), paste this to it:
@@ -57,7 +58,7 @@ Prefer to do it yourself? Use the Install section below, or run `kyber setup` fr
 
 **What's the honest catch?** The list applies to *you*, so any program you run could also listen at that door, **including your keyboard**. That is how Linux works, not something this plugin does, but it is a real trade-off, so don't add yourself unless you are comfortable with it.
 
-**What does the helper actually do?** It checks one thing: is the left, right or middle button down? It ignores keys and mouse movement. It has no network code at all, it saves nothing, and it is about 500 lines of readable Python (`lib/ignite-listener`). It does not block or change your clicks; it only watches.
+**What does the default helper actually do?** The Python helper checks whether the left, right or middle button is down. It ignores keys and does not block or change clicks. The experimental Rust runtime uses the local Hyprland bridge for pointer events and does not open `/dev/input`; see [the Rust runtime notes](rust/README.md).
 
 **Can I skip the group?** Yes. Without it you still get the cursor in your theme's accent. The click glow, trail and sounds simply stay off. The installer detects this and doesn't start the helper.
 
@@ -169,9 +170,10 @@ backup and retains other personal recordings.
 | `sounds/swipe/` | Movement swipes |
 | `sounds/hum/` | Prepared hum recordings for future runtime work |
 
-On Omarchy, local overrides live under `~/.config/kyber-cursor/`. The current
-Omarchy helper uses the power-up, power-down and clash folders. This page covers
-the Omarchy / Hyprland integration only.
+On Omarchy, local overrides live under `~/.config/kyber-cursor/`. The default
+Python helper currently uses the power-up, power-down and clash folders. The
+Rust runtime also uses the recorded held hum and movement swipes. This page
+covers the Omarchy / Hyprland integration only.
 
 The owner selected these third-party recordings for this noncommercial public
 project. Their original ownership and redistribution permissions are unverified, and

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 — Linux Rust runtime source
+
+- Published the Linux/Hyprland Rust runtime, CLI, portable rendering core, and
+  native cursor bridge source.
+- Documented that the Rust runtime is experimental and that fresh novice setup
+  still uses the established Python helper; a Rust-first installer is not yet
+  available.
+- Kept this update scoped to Linux. Desktop implementations for other systems
+  are not part of this release.
+
 ## 1.3.0 — Omarchy installation update
 
 - Simplified the novice install instructions into one Omarchy plugin flow with

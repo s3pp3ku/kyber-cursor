@@ -21,6 +21,16 @@ ICONS="$HOME/.local/share/icons"
 BUILDS="$ICONS/.kyber-builds"
 STATE="${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor"
 
+# The Rust daily runtime is selected only when its managed install marker and
+# binaries are present. Setup and custom sound-file management stay in this
+# wrapper so existing installations retain their established setup flow.
+RUST_KYBER="$HOME/.local/share/kyber-cursor/rust/kyber"
+if [[ -f "$STATE/native-runtime" && -x "$RUST_KYBER" ]]; then
+  case "${1:-}" in
+    apply|off|color|random|sound|trail|volume|config|status|doctor) exec "$RUST_KYBER" "$@" ;;
+  esac
+fi
+
 accent() {
   /usr/bin/python3 - <<'PY' 2>/dev/null || true
 import tomllib

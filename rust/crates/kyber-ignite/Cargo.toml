@@ -1,0 +1,24 @@
+[package]
+name = "kyber-ignite"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Hold-to-ignite overlay daemon: evdev input, layer-shell overlay, rodio audio (Linux/Wayland)."
+
+[[bin]]
+name = "kyber-ignite"
+path = "src/main.rs"
+
+[dependencies]
+kyber-core = { workspace = true }
+evdev = "0.13"
+rodio = "0.21"
+image = "0.25"
+tiny-skia = "0.11"
+serde_json = { workspace = true }
+libc = "1.0.0-alpha.5"
+gbm = "0.18"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+sctk = { package = "smithay-client-toolkit", version = "0.19" }
+wayland-client = "0.31"

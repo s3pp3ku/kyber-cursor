@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kyber-core",
+    "crates/kyber-cli",
+    "crates/kyber-ignite",
+    "crates/kyber-native-ffi",
+]
+
+[workspace.dependencies]
+kyber-core = { path = "crates/kyber-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
