@@ -21,7 +21,7 @@ pub fn tip() -> (f64, f64) {
     (8.0, 5.0)
 }
 pub fn axis_angle() -> f64 {
-    53.4f64.to_radians()
+    62f64.to_radians()
 }
 /// Unit vector along the pointer axis, tip -> pommel.
 pub fn axis_u() -> (f64, f64) {
@@ -158,7 +158,7 @@ pub fn pointer(accent: &str, glow: &str, lit: bool) -> (String, String) {
     let r = head_r();
     let m = head_back();
     let mi = ridge_end();
-    let deg = 53.4;
+    let deg = 62.0;
     let (beam_r, beam_l) = beam_dirs();
     let (emit_r, emit_l) = (emitter_r(), emitter_l());
 

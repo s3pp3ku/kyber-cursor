@@ -30,7 +30,7 @@ NO_COLOR = '#ff4d5a'                   # not-allowed stays red whatever the acce
 
 # ---------------------------------------------------------------- geometry
 T = (8.0, 5.0)                         # pointer tip = hotspot
-ANG = math.radians(53.4)               # pointer axis, tip -> pommel
+ANG = math.radians(62.0)               # pointer axis, tip -> pommel
 U = (math.cos(ANG), math.sin(ANG))
 N = (U[1], -U[0])                      # perpendicular, towards the upper-right corner
 DEG = math.degrees(ANG)

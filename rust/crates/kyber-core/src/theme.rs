@@ -15,7 +15,7 @@ use crate::xcursor::{self, Frame};
 
 /// Build recipe marker. Bumped automatically with the crate version, so a
 /// new kyber-core always rebuilds instead of reusing stale art.
-pub const RECIPE: &str = concat!(env!("CARGO_PKG_VERSION"), "-compact-shimmer-1");
+pub const RECIPE: &str = concat!(env!("CARGO_PKG_VERSION"), "-compact-shimmer-2");
 
 /// Xcursor alias names per role. Must match `build.py::ALIASES`.
 pub fn aliases(role: &str) -> &'static [&'static str] {
