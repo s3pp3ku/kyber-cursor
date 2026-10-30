@@ -170,6 +170,13 @@ If `kyber` is "not found" in a fresh terminal, use the full path
 - Change the glow color, sounds and trail: click the Kyber button (a lightning
   bolt) on the bar, or run `kyber color`, `kyber sound`, `kyber trail`,
   `kyber volume 40`.
+- Effects: `kyber effects full` (trail, sparks, all sounds; the default),
+  `kyber effects minimal` (trail, no sparks, ignite sounds) or
+  `kyber effects basic` (just the glow, silent). Middle-clicking the button cycles them.
+- Sparks: `kyber sparks life 600` (how long they last) and `kyber sparks gap 5`
+  (how close together); `kyber sparks colors glow` keeps every spark in the glow
+  color instead of mixing in real embers. Other looks are under "More settings" in the popup, or
+  `kyber style ribbon` / `kyber sparks bubbles`; `kyber sparks default` resets.
 - Add their own sounds: `kyber sounds add FILE ignite|off|clash`.
 - Turn it off: `kyber off`. Remove it completely: `$PLUGIN/uninstall.sh` (it
   restores the normal cursor and removes Kyber's helper and settings; your own sound

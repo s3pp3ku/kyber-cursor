@@ -1,6 +1,6 @@
 //! C bridge ownership: one handle on the compositor thread; rendered bytes stay
 //! valid until the next render or destroy. All animation/raster work is Rust.
-use kyber_core::trail::{Bounds, Trail, TrailImage};
+use kyber_core::trail::{Bounds, Trail, TrailImage, TrailLook};
 use std::ffi::{c_char, CStr};
 
 #[derive(Default)]
@@ -42,6 +42,17 @@ pub unsafe extern "C" fn kyber_trail_clear(handle: *mut Handle) {
     }
 }
 
+/// Start a new path; sparks already in the air keep flying.
+///
+/// # Safety
+/// `handle` must be null or a live handle on its owning thread.
+#[no_mangle]
+pub unsafe extern "C" fn kyber_trail_break(handle: *mut Handle) {
+    if let Some(h) = handle.as_mut() {
+        h.trail.break_path();
+    }
+}
+
 /// # Safety
 /// `handle` must be null or a live handle on its owning thread. `color` must
 /// point to a valid nul-terminated UTF-8 string for the duration of the call.
@@ -75,6 +86,32 @@ pub unsafe extern "C" fn kyber_trail_bounds(handle: *mut Handle, now: f64) -> Bo
         .unwrap_or_default()
 }
 
+/// Re-read the trail look (style, sparks, spark life and spacing) from the
+/// Kyber settings folder. Cheap; hosts may call it on their settings poll.
+/// Returns true when the look changed.
+///
+/// # Safety
+/// `handle` must be null or a live handle on its owning thread.
+#[no_mangle]
+pub unsafe extern "C" fn kyber_trail_reload(handle: *mut Handle) -> bool {
+    let (Some(h), Ok(dir)) = (handle.as_mut(), kyber_core::paths::settings_dir()) else {
+        return false;
+    };
+    let look = TrailLook::load(&dir);
+    if look == h.trail.look() {
+        return false;
+    }
+    h.trail.set_look(look);
+    true
+}
+
+/// # Safety
+/// `handle` must be null or a live handle on its owning thread.
+#[no_mangle]
+pub unsafe extern "C" fn kyber_trail_particles(handle: *const Handle) -> usize {
+    handle.as_ref().map_or(0, |h| h.trail.particle_count())
+}
+
 /// # Safety
 /// `handle` must be null or a live handle on its owning thread.
 #[no_mangle]
@@ -91,11 +128,14 @@ pub unsafe extern "C" fn kyber_trail_render(
     now: f64,
     view: Bounds,
     light: bool,
+    scale: f64,
 ) -> Raster {
     let Some(h) = handle.as_mut() else {
         return Raster::default();
     };
-    h.image = h.trail.render(now, view, light);
+    // `scale` is the monitor's pixels per logical px, so the trail is drawn
+    // sharp on HiDPI screens instead of being stretched up.
+    h.image = h.trail.render(now, view, light, scale);
     h.image
         .as_ref()
         .map_or_else(Raster::default, |image| Raster {

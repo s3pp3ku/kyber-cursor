@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::color::is_valid_hex;
 
-/// Where the glow color comes from. Port of `bin/kyber::color_mode`.
+/// Where the glow color comes from. Port of the `bin/kyber::color_mode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ColorMode {
@@ -39,6 +39,136 @@ impl ColorMode {
     }
 }
 
+/// The path drawn behind the pointer while the blade is lit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TrailStyle {
+    /// No path; the particles, if any, still fly.
+    None,
+    /// A tail that tapers behind the pointer, brightest at its head.
+    #[default]
+    Comet,
+    /// A smooth glowing band that follows every curve.
+    Ribbon,
+    /// Evenly spaced dots along the path, shrinking toward the end.
+    Beads,
+    /// Rings left along the path, widening as they fade.
+    Echoes,
+}
+
+impl TrailStyle {
+    pub const ALL: [Self; 5] = [Self::Comet, Self::Ribbon, Self::Beads, Self::Echoes, Self::None];
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.as_str() == s.trim().to_lowercase())
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Comet => "comet",
+            Self::Ribbon => "ribbon",
+            Self::Beads => "beads",
+            Self::Echoes => "echoes",
+        }
+    }
+}
+
+/// What the blade throws off as it moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Particles {
+    /// Sparks that fly off, fall and burn out: the lightsaber look.
+    #[default]
+    Sparks,
+    /// Bubbles that float up, swaying.
+    Bubbles,
+    Off,
+}
+
+impl Particles {
+    pub const ALL: [Self; 3] = [Self::Sparks, Self::Bubbles, Self::Off];
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "none" => Some(Self::Off),
+            v => Self::ALL.into_iter().find(|p| p.as_str() == v),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sparks => "sparks",
+            Self::Bubbles => "bubbles",
+            Self::Off => "off",
+        }
+    }
+}
+
+/// The whole drag-trail look. Each field is one small file in the settings
+/// folder, so every host (Hyprland plugin, overlay, Windows) reads the same.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TrailLook {
+    pub style: TrailStyle,
+    pub particles: Particles,
+    /// How long a spark or bubble lasts, in milliseconds.
+    pub spark_life: u32,
+    /// Pointer travel between sparks, in logical pixels: smaller is denser.
+    pub spark_gap: u32,
+    /// Mix in real embers that cool from white-hot to red ("mixed"), or keep
+    /// every spark in the glow color ("glow").
+    pub embers: bool,
+}
+
+impl Default for TrailLook {
+    fn default() -> Self {
+        Self { style: TrailStyle::Comet, particles: Particles::Sparks, spark_life: 850, spark_gap: 20, embers: true }
+    }
+}
+
+impl TrailLook {
+    pub const SPARK_LIFE_MS: (u32, u32) = (150, 1500);
+    pub const SPARK_GAP_PX: (u32, u32) = (2, 40);
+    pub const FILES: [&'static str; 5] = ["trail-style", "trail-particles", "spark-life", "spark-gap", "spark-colors"];
+
+    /// Read from a settings folder; missing or bad files keep the default.
+    pub fn load(dir: &std::path::Path) -> Self {
+        let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+        let d = Self::default();
+        let num = |name: &str, (lo, hi): (u32, u32), fallback: u32| {
+            read(name).trim().parse::<u32>().map_or(fallback, |v| v.clamp(lo, hi))
+        };
+        Self {
+            style: TrailStyle::parse(&read("trail-style")).unwrap_or(d.style),
+            particles: Particles::parse(&read("trail-particles")).unwrap_or(d.particles),
+            spark_life: num("spark-life", Self::SPARK_LIFE_MS, d.spark_life),
+            spark_gap: num("spark-gap", Self::SPARK_GAP_PX, d.spark_gap),
+            embers: match read("spark-colors").trim() {
+                "glow" => false,
+                "mixed" => true,
+                _ => d.embers,
+            },
+        }
+    }
+
+    /// The file contents, in the order of [`Self::FILES`].
+    pub fn file_values(&self) -> [String; 5] {
+        [
+            self.style.as_str().into(),
+            self.particles.as_str().into(),
+            self.spark_life.to_string(),
+            self.spark_gap.to_string(),
+            self.spark_colors().into(),
+        ]
+    }
+
+    /// "mixed" (glow color plus embers) or "glow" (glow color only).
+    pub fn spark_colors(&self) -> &'static str {
+        if self.embers { "mixed" } else { "glow" }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SoundMode {
@@ -67,6 +197,22 @@ impl SoundMode {
     }
 }
 
+impl std::fmt::Display for TrailStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::fmt::Display for SoundMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::All => "all",
+            Self::Ignite => "ignite",
+            Self::Mute => "mute",
+        })
+    }
+}
+
 /// Portable settings model. The CLI adapts its JSON to the existing tray
 /// contract (`trail` as "on"/"off", plus the effective `color` field).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +229,8 @@ pub struct KyberConfig {
     pub sound: SoundMode,
     #[serde(default = "default_trail")]
     pub trail: bool,
+    #[serde(default)]
+    pub look: TrailLook,
     #[serde(default = "default_volume")]
     pub volume: u8,
 }
@@ -90,6 +238,7 @@ pub struct KyberConfig {
 fn default_trail() -> bool {
     true
 }
+
 fn default_volume() -> u8 {
     55
 }
@@ -103,6 +252,7 @@ impl Default for KyberConfig {
             random: String::new(),
             sound: SoundMode::All,
             trail: true,
+            look: TrailLook::default(),
             volume: 55,
         }
     }
@@ -142,7 +292,8 @@ pub fn volume_gain_str(percent: i32) -> String {
     format!("{:.4}", volume_gain(percent))
 }
 
-// --- random vivid color -----------------------------------------------
+// --- random vivid color ----------------------------------------
+
 // Port of `bin/kyber::pick_random`: HSV with high saturation/value and a
 // minimum hue distance from the previous color so re-rolls look clearly
 // different.
@@ -156,6 +307,7 @@ impl SmallRng {
     pub fn seed(seed: u64) -> Self {
         Self(seed | 1)
     }
+
     fn next_u64(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x >> 12;
@@ -164,10 +316,12 @@ impl SmallRng {
         self.0 = x;
         x.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
+
     pub fn next_f64(&mut self) -> f64 {
         // 53-bit float in [0, 1).
         ((self.next_u64() >> 11) as f64) / ((1u64 << 53) as f64)
     }
+
     pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + self.next_f64() * (hi - lo)
     }

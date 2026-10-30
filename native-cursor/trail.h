@@ -14,9 +14,16 @@ extern "C" {
 KyberTrail* kyber_trail_create();
 void kyber_trail_destroy(KyberTrail*);
 void kyber_trail_clear(KyberTrail*);
+// start a new path; particles in the air keep flying
+void kyber_trail_break(KyberTrail*);
 bool kyber_trail_color(KyberTrail*, const char*);
 void kyber_trail_sample(KyberTrail*, double now, double x, double y);
 KyberTrailBounds kyber_trail_bounds(KyberTrail*, double now);
 size_t kyber_trail_points(const KyberTrail*);
-KyberTrailRaster kyber_trail_render(KyberTrail*, double now, KyberTrailBounds view, bool light);
+// scale: the monitor's pixels per logical px
+KyberTrailRaster kyber_trail_render(KyberTrail*, double now, KyberTrailBounds view, bool light, double scale);
+// re-read the trail look (style, sparks, spark life and spacing) from the
+// Kyber settings folder; true when it changed
+bool kyber_trail_reload(KyberTrail*);
+size_t kyber_trail_particles(const KyberTrail*);
 }

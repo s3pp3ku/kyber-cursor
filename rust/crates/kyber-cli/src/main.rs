@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use kyber_core::config::{
-    pick_random, volume_gain_str, ColorMode, KyberConfig, SmallRng, SoundMode,
+    pick_random, volume_gain_str, ColorMode, KyberConfig, Particles, SmallRng, SoundMode, TrailLook, TrailStyle,
 };
 use kyber_core::sound_pack;
 
@@ -55,6 +55,7 @@ fn load_config() -> KyberConfig {
         random: read_file("random-color"),
         sound: SoundMode::parse(&read_file("sound-mode")).unwrap_or(SoundMode::All),
         trail: read_file("trail-mode") != "off",
+        look: TrailLook::load(&state_dir()),
         volume: read_file("volume").parse().unwrap_or(55),
     }
 }
@@ -72,11 +73,16 @@ fn widget_config(cfg: &KyberConfig, accent: Option<&str>) -> serde_json::Value {
         "sound": cfg.sound,
         "trail": if cfg.trail { "on" } else { "off" },
         "volume": cfg.volume,
+        "style": cfg.look.style,
+        "particles": cfg.look.particles,
+        "sparkLife": cfg.look.spark_life,
+        "sparkGap": cfg.look.spark_gap,
+        "sparkColors": cfg.look.spark_colors(),
     })
 }
 
 fn usage() -> ! {
-    eprintln!("usage: kyber apply | off | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
+    eprintln!("usage: kyber apply | off | effects [full|minimal|basic] | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | sparks [sparks|bubbles|off|life MS|gap PX|colors mixed|glow|default] | style [comet|ribbon|beads|echoes|none] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
     std::process::exit(2);
 }
 
@@ -201,6 +207,103 @@ fn cmd_trail(args: &[String]) {
     }
     write_file("trail-mode", if enabled { "on" } else { "off" });
     println!("{}", if enabled { "on" } else { "off" });
+}
+
+/// One switch for the whole experience, like the sound modes:
+///   full     trail + sparks + every sound (the stock experience)
+///   minimal  trail, no sparks, only the ignite sounds
+///   basic    just the glow: no trail, no sounds
+/// Each still lives in its own file, so any of them can be changed after.
+fn cmd_effects(args: &[String]) {
+    let (trail, particles, sound) = match args.first().map(String::as_str).unwrap_or("full") {
+        "full" => ("on", Some(Particles::Sparks), "all"),
+        "minimal" => ("on", Some(Particles::Off), "ignite"),
+        "basic" => ("off", None, "mute"),
+        _ => {
+            eprintln!("usage: kyber effects full | minimal | basic");
+            std::process::exit(2);
+        }
+    };
+    cmd_trail(&[trail.to_string()]);
+    if let Some(p) = particles {
+        write_file("trail-particles", p.as_str());
+    }
+    cmd_sound(&[sound.to_string()]);
+}
+
+/// The path drawn behind the blade. Comet is the default look; the others
+/// are extras for people who want to play.
+fn cmd_trail_style(args: &[String]) {
+    let current = load_config().look.style;
+    let style = match args.first().map(String::as_str).unwrap_or("cycle") {
+        "cycle" => {
+            let all = TrailStyle::ALL;
+            all[(all.iter().position(|s| *s == current).unwrap_or(0) + 1) % all.len()]
+        }
+        v => TrailStyle::parse(v).unwrap_or_else(|| {
+            eprintln!("usage: kyber style comet | ribbon | beads | echoes | none | cycle");
+            std::process::exit(2);
+        }),
+    };
+    write_file("trail-style", style.as_str());
+    println!("{style}");
+}
+
+/// What the blade throws off as it moves, and how long and how close
+/// together. Sparks, 850 ms, every 20 px is the default look.
+fn cmd_sparks(args: &[String]) {
+    let usage = || -> ! {
+        let (l, g) = (TrailLook::SPARK_LIFE_MS, TrailLook::SPARK_GAP_PX);
+        eprintln!(
+            "usage: kyber sparks sparks | bubbles | off | cycle | life {}-{} (ms) | gap {}-{} (px, smaller is closer together) | colors mixed|glow | default",
+            l.0, l.1, g.0, g.1
+        );
+        std::process::exit(2);
+    };
+    let look = load_config().look;
+    let number = |range: (u32, u32)| -> u32 {
+        match args.get(1).and_then(|v| v.parse::<u32>().ok()) {
+            Some(v) => v.clamp(range.0, range.1),
+            None => usage(),
+        }
+    };
+    match args.first().map(String::as_str).unwrap_or("cycle") {
+        "life" => {
+            let v = number(TrailLook::SPARK_LIFE_MS);
+            write_file("spark-life", &v.to_string());
+            println!("{v}");
+        }
+        "gap" => {
+            let v = number(TrailLook::SPARK_GAP_PX);
+            write_file("spark-gap", &v.to_string());
+            println!("{v}");
+        }
+        "colors" => match args.get(1).map(String::as_str) {
+            Some(v @ ("mixed" | "glow")) => {
+                write_file("spark-colors", v);
+                println!("{v}");
+            }
+            _ => usage(),
+        },
+        "default" => {
+            for name in TrailLook::FILES {
+                let _ = std::fs::remove_file(state_dir().join(name));
+            }
+            let d = TrailLook::default();
+            println!("{} {} {}ms {}px", d.style, d.particles.as_str(), d.spark_life, d.spark_gap);
+        }
+        "cycle" => {
+            let all = Particles::ALL;
+            let next = all[(all.iter().position(|p| *p == look.particles).unwrap_or(0) + 1) % all.len()];
+            write_file("trail-particles", next.as_str());
+            println!("{}", next.as_str());
+        }
+        v => {
+            let Some(p) = Particles::parse(v) else { usage() };
+            write_file("trail-particles", p.as_str());
+            println!("{}", p.as_str());
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -539,6 +642,9 @@ fn main() {
         "color" => cmd_color(rest),
         "volume" => cmd_volume(rest),
         "sound" => cmd_sound(rest),
+        "style" => cmd_trail_style(rest),
+        "sparks" => cmd_sparks(rest),
+        "effects" => cmd_effects(rest),
         "trail" => cmd_trail(rest),
         "doctor" => cmd_doctor(),
         "random" => {
@@ -566,6 +672,10 @@ fn main() {
             );
             println!("sound:   {}", format!("{:?}", cfg.sound).to_lowercase());
             println!("trail:   {}", if cfg.trail { "on" } else { "off" });
+            println!(
+                "look:    {} + {} ({} ms, every {} px)",
+                cfg.look.style, cfg.look.particles.as_str(), cfg.look.spark_life, cfg.look.spark_gap
+            );
             println!(
                 "volume:  {} (gain {})",
                 cfg.volume,

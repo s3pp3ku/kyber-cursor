@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — lightsaber sparks
+
+- Sparks now fly off the drag trail, drawn by Kyber itself on every platform
+  (kyber-core), so Plume is no longer needed for them. They are hard cutting
+  sparks: short streaks that shoot off the blade and stall within a few pixels.
+  A quarter wear the glow color; the rest burn from orange to deep red like hot
+  metal (`kyber sparks colors glow` keeps them all in the glow color).
+- Over light backgrounds the glowing edges get a crisp outline in a deeper
+  shade of the glow color, so they stand out from white pages.
+- One effects switch replaces the trail switch in the popup: Full (trail,
+  sparks, all sounds; the default), Minimal (trail, no sparks, ignite sounds)
+  and Basic (just the glow, silent). `kyber effects full|minimal|basic`;
+  middle-clicking the bar button cycles them.
+- New settings under "More settings": how long sparks last
+  (`kyber sparks life`, default 850 ms) and how close together they fly
+  (`kyber sparks gap`, default 20 px), plus the separate sound modes, the trail
+  switch and the other looks (Ribbon, Beads, Echoes, no trail; Bubbles or no
+  particles). Comet + Sparks is the default.
+- Fixed: the Beads and Echoes looks were sized wrongly; the glow overlay's
+  trail ignored the glow color; trails were blurry on scaled (HiDPI) screens.
+- Credit: the trail looks are adapted from Plume by Andrei C. Popa
+  (https://github.com/qempexe/plume, MIT). See THIRD_PARTY_NOTICES.md.
+
 ## 1.4.0 — Linux Rust runtime source
 
 - Published the Linux/Hyprland Rust runtime, CLI, portable rendering core, and

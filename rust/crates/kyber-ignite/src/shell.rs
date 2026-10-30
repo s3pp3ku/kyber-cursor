@@ -10,14 +10,15 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
 use kyber_core::config::SmallRng;
-use kyber_core::overlay::{LIGHT_HI, LIGHT_LO, TRAIL_ALPHA, TRAIL_S, TRAIL_UNITS};
+use kyber_core::overlay::{LIGHT_HI, LIGHT_LO};
+use kyber_core::trail::{Bounds, Trail, TrailImage, TrailLook};
 
 use crate::art::{selected_art, Art, LayerKind};
 use crate::audio::{self, Player};
 use crate::cursor;
 use crate::input::{self, ButtonEvent};
 use crate::shot;
-use crate::state::{DownAction, Engine};
+use crate::state::{DownAction, Engine, TrailPt};
 
 // ---------------------------------------------------------------- wayland
 
@@ -505,17 +506,19 @@ pub struct FrameInput<'a> {
     pub mon_y: f64,
     pub pos_x: f64,
     pub pos_y: f64,
-    /// (x, y, life 0..1) in logical px.
-    pub trail: &'a [(f64, f64, f32)],
+    /// Movement-trail points (x, y, time) shared from `Engine.trail`.
+    pub trail: &'a [TrailPt],
+    /// The drag-trail look (path style and sparks).
+    pub look: TrailLook,
     pub surf_w: u32,
     pub surf_h: u32,
 }
 
-fn blend01(dark: f32, light: f32, t: f32) -> f32 {
-    dark * (1.0 - t) + light * t
+thread_local! {
+    static OVERLAY_TRAIL: std::cell::RefCell<Trail> = std::cell::RefCell::new(Trail::default());
 }
 
-pub fn render_frame(fr: &FrameInput) -> Frame {
+pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
     let dw = (fr.surf_w as f64 * fr.bs).round() as u32;
     let dh = (fr.surf_h as f64 * fr.bs).round() as u32;
     let mut px = tiny_skia::Pixmap::new(dw, dh).expect("frame pixmap");
@@ -534,69 +537,39 @@ pub fn render_frame(fr: &FrameInput) -> Frame {
     let img_h = (lh as f64 * s as f64) as i32;
     let mut dirty = (ox as i32, oy as i32, img_w, img_h);
 
-    // Drag trail first (under the glow), like the Python's draw order.
-    let (td, tl) = (meta.trail_rgb[0], meta.trail_rgb[1]);
-    let (tr, tg, tb) = (
-        blend01(td[0] as f32, tl[0] as f32, fr.light),
-        blend01(td[1] as f32, tl[1] as f32, fr.light),
-        blend01(td[2] as f32, tl[2] as f32, fr.light),
-    );
-    for win in fr.trail.windows(2) {
-        let [(x0, y0, _), (x1, y1, life)] = *win else {
-            continue;
-        };
-        if life <= 0.0 {
-            continue;
+    // Drag trail, under the glow. One `Trail` lives across frames so its
+    // sparks keep flying between them; only points newer than the last frame
+    // are fed in, and it wears this blade's trail color.
+    OVERLAY_TRAIL.with_borrow_mut(|trail| {
+        trail.set_look(fr.look);
+        trail.set_trail_rgb(meta.trail_rgb);
+        let newest = trail.newest_time();
+        if fr.trail.is_empty() {
+            trail.break_path();
         }
-        for (wscale, strength) in [(1.0f32, 0.35f32), (0.55, 0.5)] {
-            let width =
-                TRAIL_UNITS as f32 * fr.f as f32 * fr.bs as f32 * wscale * (0.35 + 0.65 * life);
-            let alpha = TRAIL_ALPHA as f32 * strength * life.powf(1.5);
-            if width < 0.5 || alpha <= 0.01 {
-                continue;
-            }
-            let mut pb = tiny_skia::PathBuilder::new();
-            pb.move_to(
-                ((x0 - fr.mon_x) * fr.bs) as f32,
-                ((y0 - fr.mon_y) * fr.bs) as f32,
-            );
-            pb.line_to(
-                ((x1 - fr.mon_x) * fr.bs) as f32,
-                ((y1 - fr.mon_y) * fr.bs) as f32,
-            );
-            if let Some(path) = pb.finish() {
-                let paint = tiny_skia::Paint {
-                    shader: tiny_skia::Shader::SolidColor(tiny_skia::Color::from_rgba8(
-                        (tr * 255.0) as u8,
-                        (tg * 255.0) as u8,
-                        (tb * 255.0) as u8,
-                        (alpha * 255.0).clamp(0.0, 255.0) as u8,
-                    )),
-                    ..Default::default()
-                };
-                let stroke = tiny_skia::Stroke {
-                    width,
-                    line_cap: tiny_skia::LineCap::Round,
-                    ..Default::default()
-                };
-                px.stroke_path(
-                    &path,
-                    &paint,
-                    &stroke,
-                    tiny_skia::Transform::identity(),
-                    None,
-                );
-            }
-            let m = (width * 0.75 + 2.0) as i32;
-            for (x, y) in [(x0, y0), (x1, y1)] {
-                let (dx, dy) = (
-                    ((x - fr.mon_x) * fr.bs) as i32,
-                    ((y - fr.mon_y) * fr.bs) as i32,
-                );
-                dirty = union_rect(dirty, (dx - m, dy - m, 2 * m, 2 * m));
-            }
+        for pt in fr.trail.iter().filter(|pt| newest.is_none_or(|n| pt.t > n)) {
+            trail.sample(pt.t, pt.x, pt.y);
         }
-    }
+        let view = Bounds { x: fr.mon_x, y: fr.mon_y, width: fr.surf_w as f64, height: fr.surf_h as f64 };
+        if let Some(TrailImage { bounds, pixels }) = trail.render(now, view, fr.light > 0.5, fr.bs) {
+            // `render` may lower the density for a huge trail; scale it back
+            // up to the frame's pixels.
+            let factor = pixels.width() as f64 / bounds.width;
+            let bx = ((bounds.x - fr.mon_x) * fr.bs) as i32;
+            let by = ((bounds.y - fr.mon_y) * fr.bs) as i32;
+            let scale = (fr.bs / factor) as f32;
+            px.draw_pixmap(
+                0,
+                0,
+                pixels.as_ref(),
+                &tiny_skia::PixmapPaint::default(),
+                tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, bx as f32, by as f32),
+                None,
+            );
+            let (w, h) = ((pixels.width() as f32 * scale).ceil() as i32, (pixels.height() as f32 * scale).ceil() as i32);
+            dirty = union_rect(dirty, (bx, by, w, h));
+        }
+    });
 
     if fr.e > 0.0 {
         let weight = |is_light: bool| {
@@ -738,16 +711,9 @@ fn place() -> Option<(Vec<cursor::Monitor>, Placement, (f64, f64))> {
     ))
 }
 
-fn trail_snapshot(engine: &Engine) -> Vec<(f64, f64, f32)> {
-    let now = engine.t;
-    engine
-        .trail
-        .iter()
-        .map(|pt| {
-            let life = (1.0 - (now - pt.t) / TRAIL_S).max(0.0) as f32;
-            (pt.x, pt.y, life)
-        })
-        .collect()
+/// The engine's whole trail (a `VecDeque` can wrap, so both halves).
+fn trail_snapshot(engine: &Engine) -> Vec<TrailPt> {
+    engine.trail.iter().copied().collect()
 }
 
 /// Spawn watchers for devices not already watched.
@@ -780,6 +746,7 @@ pub fn run_daemon() -> i32 {
     }
     let player = Player::new();
     let mut engine = Engine::new();
+    engine.load_trail_look();
     let mut rng = SmallRng::seed(1);
     let mut art: Option<Art> = None;
     let mut placement: Option<Placement> = None;
@@ -852,27 +819,28 @@ pub fn run_daemon() -> i32 {
             if let (Some(a), Some(pl)) = (art.as_ref(), placement.as_ref()) {
                 let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
                 let (hum_haze, hum_beam) = engine.hum(flicker);
-                let frame = render_frame(&FrameInput {
-                    art: a,
-                    e: engine.ease(),
-                    hum_haze,
-                    hum_beam,
-                    light: engine.light,
-                    f: pl.f,
-                    bs: pl.bs as f64,
-                    mon_x: pl.mon_x,
-                    mon_y: pl.mon_y,
-                    pos_x: last_pos.0,
-                    pos_y: last_pos.1,
-                    trail: &trail_snapshot(&engine),
-                    surf_w: pl.surf_w,
-                    surf_h: pl.surf_h,
-                });
-                if overlay
-                    .draw(&frame.pixels, frame.w, frame.h, frame.dirty)
-                    .is_err()
-                {
-                    break;
+                let frame = render_frame(
+                    &FrameInput {
+                        art: a,
+                        e: engine.ease(),
+                        hum_haze,
+                        hum_beam,
+                        light: engine.light,
+                        f: pl.f,
+                        bs: pl.bs as f64,
+                        mon_x: pl.mon_x,
+                        mon_y: pl.mon_y,
+                        pos_x: last_pos.0,
+                        pos_y: last_pos.1,
+                        trail: &trail_snapshot(&engine),
+                        look: engine.trail_look,
+                        surf_w: pl.surf_w,
+                        surf_h: pl.surf_h,
+                    },
+                    engine.t,
+                );
+                if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
+                    eprintln!("kyber-ignite: draw failed: {e}");
                 }
             }
             overlay.poll(Duration::ZERO);
@@ -885,6 +853,8 @@ pub fn run_daemon() -> i32 {
 fn handle_button(ev: ButtonEvent, engine: &mut Engine, player: &Player, now: f64) {
     match ev {
         ButtonEvent::Down => {
+            // pick up a changed trail look on every press
+            engine.load_trail_look();
             let action = engine.button_down(now);
             if matches!(
                 action,
@@ -1012,6 +982,7 @@ pub fn run_demo(seconds: f64) -> i32 {
         }
 
         let mut engine = Engine::new();
+        engine.load_trail_look();
         engine.button_down(now_s());
         engine.begin_visual(now_s(), true, pl.light);
         let release_at = Instant::now() + Duration::from_millis(420);
@@ -1031,26 +1002,28 @@ pub fn run_demo(seconds: f64) -> i32 {
             if last_draw.elapsed() >= Duration::from_millis(16) {
                 let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
                 let (hum_haze, hum_beam) = engine.hum(flicker);
-                let frame = render_frame(&FrameInput {
-                    art: &a,
-                    e: engine.ease(),
-                    hum_haze,
-                    hum_beam,
-                    light: engine.light,
-                    f: pl.f,
-                    bs: pl.bs as f64,
-                    mon_x: m.x,
-                    mon_y: m.y,
-                    pos_x: last_pos.0,
-                    pos_y: last_pos.1,
-                    trail: &trail_snapshot(&engine),
-                    surf_w: pl.surf_w,
-                    surf_h: pl.surf_h,
-                });
+                let frame = render_frame(
+                    &FrameInput {
+                        art: &a,
+                        e: engine.ease(),
+                        hum_haze,
+                        hum_beam,
+                        light: engine.light,
+                        f: pl.f,
+                        bs: pl.bs as f64,
+                        mon_x: m.x,
+                        mon_y: m.y,
+                        pos_x: last_pos.0,
+                        pos_y: last_pos.1,
+                        trail: &trail_snapshot(&engine),
+                        look: engine.trail_look,
+                        surf_w: pl.surf_w,
+                        surf_h: pl.surf_h,
+                    },
+                    engine.t,
+                );
                 if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
                     eprintln!("kyber-ignite: draw failed: {e}");
-                    overlay.hide();
-                    return 1;
                 }
                 last_draw = Instant::now();
             }
@@ -1072,9 +1045,10 @@ pub fn run_demo(seconds: f64) -> i32 {
             pos_x: last_pos.0,
             pos_y: last_pos.1,
             trail: &[],
+            look: engine.trail_look,
             surf_w: pl.surf_w,
             surf_h: pl.surf_h,
-        });
+        }, engine.t);
         if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
             eprintln!("kyber-ignite: clear failed: {e}");
             overlay.hide();
@@ -1162,12 +1136,13 @@ mod render_tests {
             pos_x: 500.0,
             pos_y: 300.0,
             trail: &[],
+            look: TrailLook::default(),
             surf_w: 1200,
             surf_h: 750,
         };
         let start = Instant::now();
         for _ in 0..30 {
-            std::hint::black_box(render_frame(&input));
+            std::hint::black_box(render_frame(&input, 0.0));
         }
         eprintln!(
             "held renderer: {:.2} ms/frame",

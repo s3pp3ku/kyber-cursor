@@ -4,9 +4,8 @@
 
 use std::collections::VecDeque;
 
-use kyber_core::overlay::{
-    DOUBLE_CLICK_S, HUM_BEAM, HUM_HAZE, IGNITE_S, RETRACT_S, SOUND_DELAY_MS, SURGE_S, TRAIL_S,
-};
+use kyber_core::overlay::{DOUBLE_CLICK_S, HUM_BEAM, HUM_HAZE, IGNITE_S, RETRACT_S, SOUND_DELAY_MS, SURGE_S, TRAIL_S};
+use kyber_core::trail::TrailLook;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -40,6 +39,7 @@ pub struct Engine {
     pub surge_until: f64,
     pub trail: VecDeque<TrailPt>,
     pub trail_on: bool,
+    pub trail_look: TrailLook,
     pub light: f32,
     pub held: u32,
     press_id: u64,
@@ -58,6 +58,7 @@ impl Engine {
             surge_until: 0.0,
             trail: VecDeque::new(),
             trail_on: true,
+            trail_look: TrailLook::default(),
             light: 0.0,
             held: 0,
             press_id: 0,
@@ -65,6 +66,14 @@ impl Engine {
             double: false,
             last_press: 0.0,
             pending_at: None,
+        }
+    }
+
+    /// Re-read the drag-trail look (style, sparks, their life and spacing)
+    /// from the settings folder; missing files keep the defaults.
+    pub fn load_trail_look(&mut self) {
+        if let Ok(dir) = kyber_core::paths::settings_dir() {
+            self.trail_look = TrailLook::load(&dir);
         }
     }
 

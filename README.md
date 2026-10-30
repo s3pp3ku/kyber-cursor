@@ -23,6 +23,7 @@ Every cursor role, generated from the accent:
 ## Features
 - Full cursor set (pointer, link, busy, text, crosshair, move, resize, grab, not-allowed...), regenerated in the current accent on every `omarchy theme set` and at boot.
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
+- Three effects levels, picked in one click: **Full** (glow, drag trail, lightsaber sparks, short hard cutting sparks, mostly hot orange-red with some in your glow color, and every sound; the default), **Minimal** (glow and trail, no sparks, only the ignite sounds) and **Basic** (just the glow, silent). Everything else (each sound mode, the trail switch, how long sparks last and how close together they fly, other trail looks such as ribbon, beads, echoes and bubbles) is tucked under "More settings". The trail looks are adapted from [Plume](https://github.com/qempexe/plume) by Andrei C. Popa (see [Credits](#credits)).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
@@ -120,17 +121,23 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 ```
 kyber apply        # rebuild in the current accent and switch to it
 kyber off          # back to Adwaita (the glow stops too)
+kyber effects full|minimal|basic   # the whole experience in one switch (full is the default)
 kyber sound        # cycle sound mode: all -> ignite -> mute
 kyber trail        # toggle the drag trail (or `kyber trail on` / `kyber trail off`)
 kyber color theme|custom|random   # where the glow color comes from
 kyber color #ff7a00   # a color of your own (switches to custom)
 kyber random       # roll a new random color now (switches to random)
 kyber volume 40    # sound volume, 0-100
+kyber sparks life 600   # how long sparks last, 150-1500 ms (default 850)
+kyber sparks gap 5      # how close together, 2-40 px of travel per spark (default 20)
+kyber sparks colors glow   # every spark in the glow color (default: mixed, mostly hot orange-red)
+kyber sparks bubbles    # sparks | bubbles | off; `kyber sparks default` resets the look
+kyber style ribbon      # trail shape: comet (default) | ribbon | beads | echoes | none
 kyber config       # every setting as one line of JSON
 kyber status
 ```
 ### The bar button
-Add it to your bar with `omarchy bar put io.github.s3pp3ku.kyber-cursor` (the installer doesn't touch your bar). Left-click opens the options popup, middle-click cycles the sound, right-click turns Kyber on or off.
+Add it to your bar with `omarchy bar put io.github.s3pp3ku.kyber-cursor` (the installer doesn't touch your bar). Left-click opens the options popup, middle-click cycles the effects (full, minimal, basic), right-click turns Kyber on or off.
 
 Bind the sound and trail toggles to keys if you like. In Omarchy's Lua bindings (`~/.config/hypr/bindings.lua`):
 ```lua
@@ -199,9 +206,18 @@ The Rust renderer, timings, trail and audio implementation live under
 `rust/crates/`. The older Python sources remain for comparison and migration
 reference; the standard installer runs the Rust CLI and helper.
 
+## Credits
+
+The Sparks, Bubbles, Ribbon, Beads and Echoes trail looks are adapted from
+[Plume](https://github.com/qempexe/plume) by Andrei C. Popa
+([qempexe](https://github.com/qempexe)), MIT License. Kyber draws them itself,
+so Plume is not needed; its full license is in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thank you, Andrei.
+
 ## License
 
-Source code: MIT. The selected third-party sound recordings are separate; see
+Source code: MIT. Code adapted from other projects keeps its own license; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The selected third-party sound recordings are separate; see
 [the audio notice](assets/sounds/README.md).
 
 *Kyber Cursor is an independent, fan-made project created with the help of AI tools. It is not affiliated with or endorsed by Lucasfilm or Disney.*

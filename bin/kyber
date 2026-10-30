@@ -8,6 +8,12 @@
 #   kyber color theme|custom|random|#rrggbb   where the glow color comes from
 #   kyber random               roll a new random color now
 #   kyber volume 0-100         sound volume
+#   kyber effects full|minimal|basic   full: trail, sparks, all sounds (default)
+#                              minimal: trail, no sparks, ignite sounds; basic: glow only, silent
+#   kyber sparks life MS|gap PX|default   how long sparks last, how close together
+#   kyber sparks colors mixed|glow        glow color plus hot orange-red sparks (default), or glow color only
+#   kyber sparks sparks|bubbles|off       what flies off the trail (sparks is the default)
+#   kyber style comet|ribbon|beads|echoes|none   the drag trail's look (comet is the default)
 #   kyber sounds default|add|list|preview   install or manage the selected sound pack
 #   kyber setup [--yes] [--bar]  one-step setup: previews by default, --yes does it (never uses sudo)
 #   kyber doctor               check dependencies and setup, and say how to fix anything
@@ -282,15 +288,65 @@ cmd_volume() {
   echo "$v" > "$f"; echo "$v"
 }
 
+# The trail look: what kyber-core's TrailLook reads, written here too so the
+# commands work whichever runtime is installed.
+cmd_style() {
+  mkdir -p "$STATE"
+  local v="${1:-cycle}" cur
+  cur=$(cat "$STATE/trail-style" 2>/dev/null || echo comet)
+  if [[ $v == cycle ]]; then
+    case $cur in comet) v=ribbon ;; ribbon) v=beads ;; beads) v=echoes ;; echoes) v=none ;; *) v=comet ;; esac
+  fi
+  [[ $v =~ ^(comet|ribbon|beads|echoes|none)$ ]] || { echo "usage: kyber style comet | ribbon | beads | echoes | none | cycle" >&2; exit 2; }
+  echo "$v" > "$STATE/trail-style"; echo "$v"
+}
+
+# One switch for the whole experience, like the sound modes. Each part keeps
+# its own setting, so any of them can still be changed afterwards.
+cmd_effects() {
+  local self="${BASH_SOURCE[0]}"
+  case "${1:-full}" in
+    full)    "$self" trail on >/dev/null; mkdir -p "$STATE"; echo sparks > "$STATE/trail-particles"; "$self" sound all >/dev/null ;;
+    minimal) "$self" trail on >/dev/null; mkdir -p "$STATE"; echo off > "$STATE/trail-particles"; "$self" sound ignite >/dev/null ;;
+    basic)   "$self" trail off >/dev/null; "$self" sound mute >/dev/null ;;
+    *) echo "usage: kyber effects full | minimal | basic" >&2; exit 2 ;;
+  esac
+  echo "${1:-full}"
+}
+
+cmd_sparks() {
+  mkdir -p "$STATE"
+  local v="${1:-cycle}" n="${2:-}" cur
+  cur=$(cat "$STATE/trail-particles" 2>/dev/null || echo sparks)
+  case $v in
+    cycle) case $cur in sparks) v=bubbles ;; bubbles) v=off ;; *) v=sparks ;; esac ;;
+    none) v=off ;;
+  esac
+  case $v in
+    sparks|bubbles|off) echo "$v" > "$STATE/trail-particles"; echo "$v" ;;
+    life) [[ $n =~ ^[0-9]+$ && $n -ge 150 && $n -le 1500 ]] || { echo "usage: kyber sparks life 150-1500 (ms)" >&2; exit 2; }
+          echo "$n" > "$STATE/spark-life"; echo "$n" ;;
+    gap)  [[ $n =~ ^[0-9]+$ && $n -ge 2 && $n -le 40 ]] || { echo "usage: kyber sparks gap 2-40 (px, smaller is closer together)" >&2; exit 2; }
+          echo "$n" > "$STATE/spark-gap"; echo "$n" ;;
+    colors) [[ $n =~ ^(mixed|glow)$ ]] || { echo "usage: kyber sparks colors mixed|glow" >&2; exit 2; }
+          echo "$n" > "$STATE/spark-colors"; echo "$n" ;;
+    default) rm -f "$STATE"/{trail-style,trail-particles,spark-life,spark-gap,spark-colors}; echo "comet sparks 850ms 20px mixed" ;;
+    *) echo "usage: kyber sparks sparks | bubbles | off | cycle | life MS | gap PX | colors mixed|glow | default" >&2; exit 2 ;;
+  esac
+}
+
 # One line of JSON with every setting, for the bar widget (and for scripts).
 cmd_config() {
   local active=false mode eff; [[ -f $STATE/active ]] && active=true
   mode=$(color_mode)
   eff=theme; [[ $mode != theme ]] && eff=$(effective_color)
-  printf '{"active":%s,"mode":"%s","color":"%s","custom":"%s","random":"%s","sound":"%s","trail":"%s","volume":%s}\n' "$active" \
+  printf '{"active":%s,"mode":"%s","color":"%s","custom":"%s","random":"%s","sound":"%s","trail":"%s","volume":%s,"style":"%s","particles":"%s","sparkLife":%s,"sparkGap":%s,"sparkColors":"%s"}\n' "$active" \
     "$mode" "$eff" "$(cat "$STATE/color" 2>/dev/null || true)" "$(cat "$STATE/random-color" 2>/dev/null || true)" \
     "$(cat "$STATE/sound-mode" 2>/dev/null || echo all)" \
-    "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" "$(cat "$STATE/volume" 2>/dev/null || echo 55)"
+    "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" "$(cat "$STATE/volume" 2>/dev/null || echo 55)" \
+    "$(cat "$STATE/trail-style" 2>/dev/null || echo comet)" "$(cat "$STATE/trail-particles" 2>/dev/null || echo sparks)" \
+    "$(cat "$STATE/spark-life" 2>/dev/null || echo 850)" "$(cat "$STATE/spark-gap" 2>/dev/null || echo 20)" \
+    "$(cat "$STATE/spark-colors" 2>/dev/null || echo mixed)"
 }
 
 # ---- sounds ------------------------------------------------------------------
@@ -492,7 +548,10 @@ case "${1:-}" in
   doctor) cmd_doctor ;;
   setup)  shift; cmd_setup "$@" ;;
   volume) shift; cmd_volume "$@" ;;
+  style)  shift; cmd_style "$@" ;;
+  sparks) shift; cmd_sparks "$@" ;;
+  effects) shift; cmd_effects "$@" ;;
   config) cmd_config ;;
   status) cmd_status ;;
-  *) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z ${1:-} ]] || exit 2 ;;
+  *) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z ${1:-} ]] || exit 2 ;;
 esac

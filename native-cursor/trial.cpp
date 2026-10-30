@@ -164,7 +164,7 @@ void drawTrail() {
     const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
     if (!monitor) return;
     const auto image = kyber_trail_render(trail, trailNow(),
-        {monitor->m_position.x, monitor->m_position.y, monitor->m_size.x, monitor->m_size.y}, bank == 1);
+        {monitor->m_position.x, monitor->m_position.y, monitor->m_size.x, monitor->m_size.y}, bank == 1, monitor->m_scale);
     if (!image.data || !image.width || !image.height) return;
     // Upload immediately: the pixels are borrowed from Rust until its next render.
     const auto texture = makeShared<Render::GL::CGLTexture>(DRM_FORMAT_ABGR8888,
@@ -298,6 +298,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     enabled = configuredActive();
     trailEnabled = configuredTrail();
     trail = kyber_trail_create();
+    kyber_trail_reload(trail);
     trailColor();
     trailTimer = makeShared<CEventLoopTimer>(std::nullopt, [](SP<CEventLoopTimer>, void*) { damageTrail(); }, nullptr);
     g_pEventLoopManager->addTimer(trailTimer);
@@ -311,6 +312,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             const auto nextTrail = configuredTrail();
             if (!nextTrail && trailEnabled) clearTrail();
             trailEnabled = nextTrail;
+            kyber_trail_reload(trail);
             const auto current = std::filesystem::path(KYBER_NATIVE_DIR) / "current";
             if (std::filesystem::exists(current) && std::filesystem::canonical(current) != loadedGeneration) {
                 loadFrames();
@@ -350,7 +352,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             if (!held.insert(event.button).second) return;
             if (!active) {
                 rememberCursor(); active = true; progress = 0; startedAt = Clock::now();
-                clearTrail();
+                // a new path, but the last swing's sparks finish burning out
+                if (trail) kyber_trail_break(trail);
+                damageTrail();
                 if (trailEnabled) {
                     const auto position = Pointer::mgr()->position();
                     kyber_trail_sample(trail, trailNow(), position.x, position.y);
@@ -407,6 +411,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                 + " shimmer_frames=" + std::to_string(holdFrames[bank].size()) + " shimmer_phase=" + std::to_string(currentHoldPhase)
                 + " active=" + (active ? "yes" : "no") + " enabled=" + (enabled ? "yes" : "no") + " protocol=2 trails=1"
                 + " trail=" + (trailEnabled ? "on" : "off") + " trail_points=" + std::to_string(kyber_trail_points(trail))
+                + " trail_particles=" + std::to_string(kyber_trail_particles(trail))
                 + " trail_renders=" + std::to_string(trailRenders);
         },
     });
