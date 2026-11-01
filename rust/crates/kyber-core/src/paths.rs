@@ -9,12 +9,24 @@ pub fn home_dir() -> Result<PathBuf, String> {
 }
 
 pub fn settings_dir() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
+    #[cfg(target_os = "windows")]
     {
-        return Ok(path.join("kyber-cursor"));
+        return std::env::var_os("APPDATA")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .map(|path| path.join("kyber-cursor"))
+            .ok_or_else(|| "cannot locate your roaming app data folder".into());
     }
-    Ok(home_dir()?.join(".config/kyber-cursor"))
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(path) = std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+        {
+            return Ok(path.join("kyber-cursor"));
+        }
+        Ok(home_dir()?.join(".config/kyber-cursor"))
+    }
 }

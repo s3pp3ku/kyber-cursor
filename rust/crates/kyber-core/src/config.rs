@@ -259,6 +259,34 @@ impl Default for KyberConfig {
 }
 
 impl KyberConfig {
+    /// Read the whole settings folder. Missing or unreadable files keep the
+    /// defaults, so a half-written settings folder never breaks a runtime.
+    pub fn load(dir: &std::path::Path) -> Self {
+        let read = |name: &str| {
+            std::fs::read_to_string(dir.join(name))
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
+        let mode = ColorMode::parse(&read("color-mode")).unwrap_or_else(|| {
+            if dir.join("color").exists() {
+                ColorMode::Custom
+            } else {
+                ColorMode::Theme
+            }
+        });
+        Self {
+            active: dir.join("active").exists(),
+            mode,
+            custom: read("color"),
+            random: read("random-color"),
+            sound: SoundMode::parse(&read("sound-mode")).unwrap_or(SoundMode::All),
+            trail: read("trail-mode") != "off",
+            look: TrailLook::load(dir),
+            volume: read("volume").parse().unwrap_or(55),
+        }
+    }
+
     /// Resolve the glow color, using the Omarchy accent when available.
     pub fn effective_color(&self, theme_accent: Option<&str>) -> String {
         match self.mode {
@@ -278,6 +306,39 @@ impl KyberConfig {
 
 fn is_valid_hex_full(h: &str) -> bool {
     h.len() == 7 && h.starts_with('#') && is_valid_hex(&h[1..])
+}
+
+/// The Omarchy theme's accent color, if this session has one. Linux only;
+/// every other platform resolves `ColorMode::Theme` to the fallback blue.
+#[cfg(target_os = "linux")]
+pub fn theme_accent() -> Option<String> {
+    let home = crate::paths::home_dir().ok()?;
+    for rel in [
+        ".local/state/omarchy/current/theme/colors.toml",
+        ".config/omarchy/current/theme/colors.toml",
+    ] {
+        if let Ok(text) = std::fs::read_to_string(home.join(rel)) {
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(value) = line.strip_prefix("accent") {
+                    let value = value
+                        .trim()
+                        .trim_start_matches(['=', ' ', '\t', '"'])
+                        .trim_end_matches('"')
+                        .trim();
+                    if is_valid_hex_full(value) {
+                        return Some(value.to_lowercase());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn theme_accent() -> Option<String> {
+    None
 }
 
 /// Slider percent -> amplitude. Cubic, like system volume sliders.

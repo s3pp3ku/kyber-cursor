@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "pack": "kyber-private-clips-v1",
+  "date": "2026-10-17",
+  "decision": "User explicitly authorized existing local clips as defaults for all future private, noncommercial packages and selected downloaded hum clips.",
+  "manifest": "assets/sounds/manifest.json",
+  "notice": "assets/sounds/README.md",
+  "source_module": "rust/crates/kyber-core/src/sound_pack.rs",
+  "synthesis_status": "Historical tools retained; not used for current default audio.",
+  "platform_scope": {
+    "linux": "Runtime uses embedded pack; legacy installer copies the same WAVs.",
+    "windows": "Desktop app uses embedded power-up, hum, off, swipe and clash; cross-built, native Windows drive pending. Older window preview retains power-up, hum and off.",
+    "macos": "Shared core/assets portable; native desktop runtime not implemented."
+  },
+  "deployment": "Installed on this Omarchy machine at user request for listening; helper restarted successfully; full sounds at 56%.",
+  "local_packages": {
+    "directory": "test-artifacts/private-clips-2026-10-17",
+    "manifest": "test-artifacts/private-clips-2026-10-17/packages.json",
+    "integrity": "test-artifacts/private-clips-2026-10-17/artifact-integrity.json"
+  },
+  "build_status": "Linux x64 release and Windows x64 cross-build succeeded. No tests or native listening checks run.",
+  "github_publication": "Awaiting owner selection: repository currently public; no upload performed.",
+  "live_deployment_report": "test-artifacts/live-recorded-sounds-2026-10-17/deployment.json",
+  "rollback_backup": "/home/s3pp3ku/.local/share/kyber-cursor/backups/recorded-audio-1792262536319500519",
+  "listening_status": "User responded \"very nice\" to the live recorded-sound update. Overall feedback is positive; individual variants and other systems were not all independently auditioned.",
+  "candidate_work": "All four downloaded ElevenLabs hum generations rejected by user; see elevenlabs-rejection.json. Current recorded pack stays selected."
+}

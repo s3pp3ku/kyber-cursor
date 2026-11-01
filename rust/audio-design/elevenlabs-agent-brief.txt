@@ -1,0 +1,36 @@
+You are helping me design an original sound set for Kyber Cursor, a glowing
+science-fiction blade mouse pointer. Use ElevenLabs Sound Effects generation.
+
+The sound should have depth from several layers working together: a deep motor
+thrum, softly beating electrical buzzes, a lower pulsing undertone, and fine
+irregular electrical crackle. Let the layers move independently. Keep a solid,
+steady body that is audible on ordinary laptop speakers. Use very little airy
+hiss. The sound should feel close, dry and electrical. Exclude speech and music.
+
+Work in this order:
+
+1. Generate the stationary HOLD HUM first: 10 seconds, seamless looping enabled.
+   Keep it fully energized throughout. There should be no ignition, shutdown,
+   repeated impact, deliberate fade-in or fade-out inside this loop. Make one
+   comparison batch and let me choose before generating the other roles.
+
+2. Once I choose the hum, use its low-mid balance and electrical texture as the
+   target for the remaining sounds. Generate each role separately:
+   - POWER-UP: about 1.3 seconds. Start with a low electrical thrum and climb
+     continuously in pitch, brightness and energy into the settled blade tone.
+     The upward activation must be clear. Keep collision impacts out of this role.
+   - POWER-DOWN: about 1 second. Start from the energized tone, descend in pitch
+     and brightness, lose energy and finish in silence. It is the counterpart
+     of the chosen power-up.
+   - SWIPE: about 0.6 seconds. One quick passing electrical growl, with a brief
+     pitch bend from the movement and very little wind noise.
+   - CLASH: about 0.6 seconds. One distinct electrical impact with a short dense
+     buzzing decay. This is the role for the sharp collision sound.
+
+Keep the five roles recognizable as the same energized object. Prefer one
+strong example of each role before expanding the number of variations.
+
+Deliver separate files, with descriptive names such as eleven-hum-01,
+eleven-ignite-01, eleven-off-01, eleven-swipe-01 and eleven-clash-01. Download WAV
+when offered; MP3 is also suitable. Keep each generation's prompt and settings.
+Present candidates for listening before treating the set as final.

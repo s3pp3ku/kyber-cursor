@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; media-src data: blob:">
+<title>Kyber · Build the hum</title>
+<style>
+:root{color-scheme:dark;font:16px/1.6 system-ui,sans-serif;background:#101719;color:#edf2f1}
+body{max-width:1020px;margin:auto;padding:40px 24px 70px}h1{font-size:clamp(32px,5vw,48px);line-height:1.15;margin:8px 0 18px}
+h2{font-size:23px;margin-top:36px}p{color:#bccdcd;max-width:76ch}.eyebrow,.tag{color:#86e5ce;font-size:13px;letter-spacing:.07em}
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 0;position:sticky;top:0;background:#101719f5;z-index:1}
+button,input{font:inherit}button{border:1px solid #43625e;border-radius:8px;padding:9px 15px;color:inherit;background:#203631;cursor:pointer}
+button.primary{background:#86e5ce;color:#102420;font-weight:650}button:hover{filter:brightness(1.15)}button[aria-pressed=true]{outline:2px solid #86e5ce}
+button:focus-visible,input:focus-visible{outline:3px solid #b8fae9;outline-offset:3px}input[type=range]{accent-color:#86e5ce;vertical-align:middle;width:100%}
+.volume{display:flex;align-items:center;gap:8px;margin-left:auto}.volume input{width:100px}.grid{display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:16px}
+article{padding:22px;border:1px solid #364e4b;border-radius:14px;background:#172324}article.solo{border-color:#86e5ce}article h3{margin:5px 0;font-size:22px}
+article p{font-size:14px;min-height:50px}article .buttons{display:flex;justify-content:space-between;align-items:center;gap:10px}
+article .slider{display:flex;align-items:center;gap:15px;margin-top:18px}.slider output{min-width:45px;text-align:right}.status{min-height:26px;color:#86e5ce}
+.reference{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #364e4b}#reference-files{max-width:100%}
+footer{margin-top:35px;color:#a4b9b7;font-size:14px}.secondary{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.volume{margin-left:0}.transport{position:static}article p{min-height:0}}
+</style>
+<main>
+<div class="eyebrow">KYBER / HUM DESIGN / REVISION 3</div>
+<h1>Hear the parts. Shape the whole.</h1>
+<p>The fourth layer now adds a humming electrical crackle with less air noise. Listen to Electrical crackle alone, then hear it in the full blend. You can adjust each part while it plays.</p>
+<div class="transport">
+  <button id="play" class="primary">Play full hum</button><button id="stop">Stop</button>
+  <label class="volume" for="volume">Volume <input id="volume" type="range" min="0" max="100" value="65"> <output id="volume-value">65%</output></label>
+</div>
+<p id="status" class="status" role="status" aria-live="polite">Ready. The full hum plays for twelve seconds.</p>
+<div class="grid" id="layers"></div>
+<div class="secondary"><button id="full">Return to full mix</button><button id="reset">Reset balance</button><button id="save">Save mix</button></div>
+<h2>Compare with your references</h2>
+<p>Choose <strong>lightsaber-hum.mp3</strong> and <strong>lightsaber-hummm.mp3</strong> from Downloads. Reference volume is matched to the starting blend.</p>
+<input id="reference-files" type="file" accept="audio/*" multiple aria-label="Choose local hum references"><div id="references"></div>
+<h2>What gives it the right depth?</h2>
+<p>Tell me which parts feel right, which are missing, and which get in the way. You can save your balance and use it as the starting point for the next pass.</p>
+<footer>Original generated sources. The page works offline on Windows, Mac and Linux. Selected reference files stay on your computer. Live cursor audio is unchanged.</footer>
+</main>
+<script>
+const manifest=/* LAYER_MANIFEST */{};
+const audioData=/* LAYER_AUDIO */{};
+const descriptions={
+  motor:['FOUNDATION','Low motor','The deep mechanical body, with uneven rotation and small changes in load.'],
+  electrical:['ELECTRICITY','Electrical rasp','A separate buzzing current with shifting, beating overtones.'],
+  undertone:['UNDERCURRENT','Lower throb','A rougher low layer with its own pitch and flutter.'],
+  crackle:['CURRENT','Electrical crackle','A humming current with dense, irregular electrical sputter and a trace of grain.']
+};
+const settings=Object.fromEntries(manifest.layers.map(layer=>[layer.id,{gain:1,enabled:true}]));
+const cache=new Map();
+let context,master,group=null,solo=null,request=0;
+const status=document.getElementById('status');
+const nominalGuard=Math.min(1,.90/manifest.layers.reduce((sum,layer)=>sum+layer.peak,0));
+function ensureAudio(){
+  if(!context){context=new (window.AudioContext||window.webkitAudioContext)();master=context.createGain();master.connect(context.destination);}
+  master.gain.value=(Number(document.getElementById('volume').value)/100)**2;
+  return context.resume();
+}
+function stop(){
+  request++;
+  if(group){
+    const old=group;group=null;
+    old.output.gain.cancelScheduledValues(context.currentTime);
+    old.output.gain.setTargetAtTime(0,context.currentTime,.006);
+    old.sources.forEach(source=>{source.onended=null;source.stop(context.currentTime+.035);});
+  }
+  status.textContent='Stopped.';
+}
+function weight(id){return (solo?solo===id:settings[id].enabled)?settings[id].gain:0;}
+function refresh(){
+  const peakBound=manifest.layers.reduce((sum,layer)=>sum+layer.peak*weight(layer.id),0);
+  const safety=Math.min(1,.90/Math.max(peakBound,1e-9));
+  if(group?.kind==='mix'){
+    for(const layer of manifest.layers)group.gains[layer.id].gain.setTargetAtTime(weight(layer.id),context.currentTime,.015);
+    group.guard.gain.setTargetAtTime(safety,context.currentTime,.015);
+  }
+  for(const layer of manifest.layers){
+    document.getElementById('card-'+layer.id).classList.toggle('solo',solo===layer.id);
+    document.getElementById('solo-'+layer.id).setAttribute('aria-pressed',String(solo===layer.id));
+  }
+  if(group?.kind==='mix')status.textContent=solo?'Listening alone: '+descriptions[solo][1]:'Playing the full blend. Adjust the parts while listening.';
+}
+async function getDraft(id){
+  if(!cache.has(id)){
+    const raw=atob(audioData[id]);
+    const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));
+    cache.set(id,context.decodeAudioData(bytes.buffer));
+  }
+  return cache.get(id);
+}
+function makeGroup(kind){
+  const output=context.createGain();output.connect(master);output.gain.value=0;
+  output.gain.setTargetAtTime(1,context.currentTime+.015,.008);
+  return {kind,output,sources:[],gains:{}};
+}
+async function startMix(){
+  stop();const token=request;
+  try{
+    await ensureAudio();
+    const buffers=await Promise.all(manifest.layers.map(layer=>getDraft(layer.id)));
+    if(token!==request)return;
+    const next=makeGroup('mix');next.guard=context.createGain();next.guard.connect(next.output);
+    const at=context.currentTime+.035;
+    manifest.layers.forEach((layer,index)=>{
+      const source=context.createBufferSource(),gain=context.createGain();
+      source.buffer=buffers[index];gain.gain.value=weight(layer.id);source.connect(gain);gain.connect(next.guard);
+      next.sources.push(source);next.gains[layer.id]=gain;source.start(at);
+    });
+    next.sources[0].onended=()=>{if(group===next){group=null;status.textContent='Finished. Play again to continue shaping the blend.';}};
+    group=next;refresh();
+  }catch(error){if(token===request)status.textContent='Playback failed: '+error.message;}
+}
+function referenceGain(buffer){
+  let energy=0,peak=0;
+  const trim=Math.min(Math.floor(buffer.sampleRate*.3),Math.floor(buffer.length/8));
+  for(let channel=0;channel<buffer.numberOfChannels;channel++){
+    const values=buffer.getChannelData(channel);
+    for(let i=0;i<values.length;i++){peak=Math.max(peak,Math.abs(values[i]));if(i>=trim&&i<values.length-trim)energy+=values[i]*values[i];}
+  }
+  const rms=Math.sqrt(energy/((buffer.length-trim*2)*buffer.numberOfChannels));
+  return rms>1e-7?Math.min(manifest.mix.rms/rms,.85/Math.max(peak,1e-9))*nominalGuard:1;
+}
+async function playReference(buffer,name){
+  stop();const token=request;
+  try{
+    await ensureAudio();if(token!==request)return;
+    const next=makeGroup('reference'),source=context.createBufferSource(),gain=context.createGain();
+    source.buffer=buffer;gain.gain.value=referenceGain(buffer);source.connect(gain);gain.connect(next.output);
+    next.sources.push(source);source.onended=()=>{if(group===next){group=null;status.textContent='Reference finished.';}};
+    group=next;source.start(context.currentTime+.035);status.textContent='Playing reference: '+name;
+  }catch(error){if(token===request)status.textContent=error.message;}
+}
+for(const layer of manifest.layers){
+  const [tag,name,description]=descriptions[layer.id];
+  const card=document.createElement('article');card.id='card-'+layer.id;
+  card.innerHTML='<div class="tag"></div><h3></h3><p></p><div class="buttons"><label><input type="checkbox" checked> Include</label><button>Listen alone</button></div><label class="slider"><input type="range" min="0" max="150" step="5" value="100"><output>100%</output></label>';
+  card.querySelector('.tag').textContent=tag;card.querySelector('h3').textContent=name;card.querySelector('p').textContent=description;
+  const include=card.querySelector('input[type=checkbox]'),slider=card.querySelector('input[type=range]'),button=card.querySelector('button');
+  include.setAttribute('aria-label','Include '+name);slider.setAttribute('aria-label',name+' level');button.id='solo-'+layer.id;
+  button.setAttribute('aria-label','Listen to '+name+' alone');button.setAttribute('aria-pressed','false');
+  include.addEventListener('change',()=>{settings[layer.id].enabled=include.checked;solo=null;refresh();});
+  slider.addEventListener('input',()=>{settings[layer.id].gain=Number(slider.value)/100;card.querySelector('output').textContent=slider.value+'%';refresh();});
+  button.addEventListener('click',()=>{solo=solo===layer.id?null:layer.id;if(group?.kind==='mix')refresh();else startMix();});
+  document.getElementById('layers').append(card);
+}
+document.getElementById('play').addEventListener('click',()=>{solo=null;startMix();});
+document.getElementById('stop').addEventListener('click',stop);
+document.getElementById('full').addEventListener('click',()=>{solo=null;if(group?.kind==='mix')refresh();else startMix();});
+document.getElementById('reset').addEventListener('click',()=>{
+  solo=null;for(const layer of manifest.layers){settings[layer.id]={gain:1,enabled:true};const card=document.getElementById('card-'+layer.id);card.querySelector('input[type=range]').value=100;card.querySelector('output').textContent='100%';card.querySelector('input[type=checkbox]').checked=true;}refresh();
+});
+document.getElementById('volume').addEventListener('input',event=>{
+  document.getElementById('volume-value').textContent=event.target.value+'%';
+  if(master)master.gain.setTargetAtTime((Number(event.target.value)/100)**2,context.currentTime,.015);
+});
+document.getElementById('save').addEventListener('click',()=>{
+  const data={format:'kyber-hum-layer-mix',version:manifest.version,settings,layers:manifest.layers.map(layer=>({id:layer.id,sha256:layer.sha256}))};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='kyber-hum-mix.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='Saved the blend settings. Listening volume and solo selection are separate.';
+});
+let fileRequest=0;
+document.getElementById('reference-files').addEventListener('change',async event=>{
+  stop();const token=++fileRequest,list=document.getElementById('references');list.replaceChildren();
+  for(const file of [...event.target.files].slice(0,2)){
+    const row=document.createElement('div');row.className='reference';const label=document.createElement('span');label.textContent=file.name;
+    const button=document.createElement('button');button.textContent='Play reference';button.disabled=true;row.append(label,button);list.append(row);
+    try{await ensureAudio();const buffer=await context.decodeAudioData(await file.arrayBuffer());if(token!==fileRequest)return;button.disabled=false;button.addEventListener('click',()=>playReference(buffer,file.name));}
+    catch(error){if(token===fileRequest){button.textContent='Unable to decode';status.textContent='Could not load '+file.name+': '+error.message;}}
+  }
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',stop);
+</script>
+</html>

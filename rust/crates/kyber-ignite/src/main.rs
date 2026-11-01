@@ -5,6 +5,7 @@
 //! via rodio. No Python, GTK, grim-sidecar... (grim still samples the
 //! background patch; see `shot.rs`).
 
+mod aim;
 mod art;
 mod audio;
 mod cursor;

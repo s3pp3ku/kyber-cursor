@@ -1,0 +1,49 @@
+name: Portable Rust core
+
+on:
+  push:
+    paths: ['rust/**', 'assets/sounds/**', '.github/workflows/rust-portable.yml']
+  pull_request:
+    paths: ['rust/**', 'assets/sounds/**', '.github/workflows/rust-portable.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo test --locked -p kyber-core -p kyber-cli -p kyber-preview
+      - run: cargo clippy --locked -p kyber-core -p kyber-cli -p kyber-preview --all-targets -- -D warnings
+      - run: cargo run --locked --release -p kyber-core --example glow_review -- ../test-artifacts/portable-glow-review
+
+  windows-desktop:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Build and package desktop app without changing the CI desktop
+        shell: pwsh
+        run: ./scripts/build-windows-desktop.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kyber-windows-desktop-x64
+          path: test-artifacts/windows-desktop/**/*.zip
+          if-no-files-found: error

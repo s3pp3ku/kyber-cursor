@@ -5,6 +5,10 @@
 #   kyber off            go back to the Adwaita cursor (the glow stops too)
 #   kyber sound [mode]   all | ignite | mute | cycle (default: cycle)
 #   kyber trail [on|off]  the drag trail (default: toggle)
+#   kyber aim [on|off]   the blade turns to face the pointer's direction of travel (native
+#                        overlay runtime only; default: toggle). Keeps its angle when you stop.
+#   kyber aim mirror [on|off]   flip the artwork across the pointer so the lit edge stays on the
+#                        near side as the blade turns (default: on)
 #   kyber color theme|custom|random|#rrggbb   where the glow color comes from
 #   kyber random               roll a new random color now
 #   kyber volume 0-100         sound volume
@@ -32,7 +36,7 @@ STATE="${XDG_CONFIG_HOME:-$HOME/.config}/kyber-cursor"
 RUST_KYBER="$HOME/.local/share/kyber-cursor/rust/kyber"
 if [[ -f "$STATE/native-runtime" && -x "$RUST_KYBER" ]]; then
   case "${1:-}" in
-    apply|off|color|random|sound|trail|volume|config|status|doctor) exec "$RUST_KYBER" "$@" ;;
+    apply|off|color|random|sound|trail|aim|volume|config|status|doctor) exec "$RUST_KYBER" "$@" ;;
     sounds)
       case "${2:-}" in
         default|list|preview|add) shift; exec "$RUST_KYBER" "$@" ;;
@@ -248,6 +252,39 @@ cmd_trail() {
   echo "$next"
 }
 
+cmd_aim() {
+  mkdir -p "$STATE"
+  local f="$STATE/aim-mode" cur next
+  if [[ ${1:-} == mirror ]]; then
+    local m="$STATE/aim-mirror"
+    cur=$(cat "$m" 2>/dev/null || echo on)
+    case "${2:-toggle}" in
+      on|off) next=$2 ;;
+      toggle) [[ $cur == on ]] && next=off || next=on ;;
+      *) echo "usage: kyber aim mirror [on|off|toggle]" >&2; exit 2 ;;
+    esac
+    echo "$next" > "$m"
+    echo "$next"
+    return 0
+  fi
+  cur=$(cat "$f" 2>/dev/null || echo off)
+  case "${1:-toggle}" in
+    on|off) next=$1 ;;
+    toggle) [[ $cur == on ]] && next=off || next=on ;;
+    *) echo "usage: kyber aim [on|off|toggle] | kyber aim mirror [on|off|toggle]" >&2; exit 2 ;;
+  esac
+  # The XCursor theme is a static bitmap: nothing in the legacy path can turn
+  # the blade, so say so and leave the switch off instead of pretending.
+  if [[ $next == on && $(cat "$STATE/native-runtime" 2>/dev/null || true) != overlay ]]; then
+    echo off > "$f"
+    echo "kyber: aim stays off. It needs the native overlay runtime (kyber-ignite), which draws the whole cursor at any angle; this install uses the static XCursor theme, where the pointer cannot rotate." >&2
+    exit 3
+  fi
+  echo "$next" > "$f"
+  notify-send -t 1500 "Kyber aim: $next" 2>/dev/null || true
+  echo "$next"
+}
+
 cmd_color() {
   mkdir -p "$STATE"
   local v="${1:-}"
@@ -340,10 +377,12 @@ cmd_config() {
   local active=false mode eff; [[ -f $STATE/active ]] && active=true
   mode=$(color_mode)
   eff=theme; [[ $mode != theme ]] && eff=$(effective_color)
-  printf '{"active":%s,"mode":"%s","color":"%s","custom":"%s","random":"%s","sound":"%s","trail":"%s","volume":%s,"style":"%s","particles":"%s","sparkLife":%s,"sparkGap":%s,"sparkColors":"%s"}\n' "$active" \
+  printf '{"active":%s,"mode":"%s","color":"%s","custom":"%s","random":"%s","sound":"%s","trail":"%s","aim":"%s","aimMirror":"%s","volume":%s,"style":"%s","particles":"%s","sparkLife":%s,"sparkGap":%s,"sparkColors":"%s"}\n' "$active" \
     "$mode" "$eff" "$(cat "$STATE/color" 2>/dev/null || true)" "$(cat "$STATE/random-color" 2>/dev/null || true)" \
     "$(cat "$STATE/sound-mode" 2>/dev/null || echo all)" \
-    "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" "$(cat "$STATE/volume" 2>/dev/null || echo 55)" \
+    "$(cat "$STATE/trail-mode" 2>/dev/null || echo on)" \
+    "$(cat "$STATE/aim-mode" 2>/dev/null || echo off)" "$(cat "$STATE/aim-mirror" 2>/dev/null || echo on)" \
+    "$(cat "$STATE/volume" 2>/dev/null || echo 55)" \
     "$(cat "$STATE/trail-style" 2>/dev/null || echo comet)" "$(cat "$STATE/trail-particles" 2>/dev/null || echo sparks)" \
     "$(cat "$STATE/spark-life" 2>/dev/null || echo 850)" "$(cat "$STATE/spark-gap" 2>/dev/null || echo 20)" \
     "$(cat "$STATE/spark-colors" 2>/dev/null || echo mixed)"
@@ -527,6 +566,7 @@ cmd_status() {
   echo "glow:     ${glow:-not installed}"
   echo "sound:    $(cat "$STATE/sound-mode" 2>/dev/null || echo all)"
   echo "trail:    $(cat "$STATE/trail-mode" 2>/dev/null || echo on)"
+  echo "aim:      $(cat "$STATE/aim-mode" 2>/dev/null || echo off) (mirror $(cat "$STATE/aim-mirror" 2>/dev/null || echo on))"
   echo "color:    $(color_mode) ($(effective_color))"
   echo "volume:   $(cat "$STATE/volume" 2>/dev/null || echo 55)"
   local d n
@@ -542,6 +582,7 @@ case "${1:-}" in
   off)    cmd_off ;;
   sound)  shift; cmd_sound "$@" ;;
   trail)  shift; cmd_trail "$@" ;;
+  aim)    shift; cmd_aim "$@" ;;
   color)  shift; cmd_color "$@" ;;
   random) cmd_random ;;
   sounds) shift; cmd_sounds "$@" ;;

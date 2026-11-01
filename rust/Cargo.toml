@@ -5,6 +5,8 @@ members = [
     "crates/kyber-cli",
     "crates/kyber-ignite",
     "crates/kyber-native-ffi",
+    "crates/kyber-preview",
+    "crates/kyber-windows",
 ]
 
 [workspace.dependencies]

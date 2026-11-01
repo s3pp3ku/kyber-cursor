@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "role": "hold-hum",
+  "character_status": "historical approval; superseded by user selection of downloaded hum clips on 2026-10-17",
+  "playback_selection": "complete four-layer blend",
+  "audition_revision": 3,
+  "audition_directory": "test-artifacts/hum-layers-crackle-2026-10-17",
+  "review_archive": {
+    "file": "test-artifacts/hum-layers-crackle-2026-10-17.zip",
+    "sha256": "653b1a6b98a92ed4a11b7a4ab709c198f2fd6d2391cbf82f4416b08524b0d535"
+  },
+  "generator": {
+    "file": "rust/crates/kyber-core/examples/hum_layers.rs",
+    "sha256": "475f833214efc7ef9a23c11638ad40c80827dba1ce4b3ecd471b8ffadd7afafd"
+  },
+  "encoding": {
+    "sample_rate": 44100,
+    "channels": 1,
+    "bits": 16,
+    "format": "PCM WAV"
+  },
+  "mix": {
+    "file": "full-hum.wav",
+    "peak": 0.707487165927887,
+    "rms": 0.21954558502818453,
+    "sha256": "1303b079c6b09d3e8a93f56bfcca4836ad7419cf0e54a229c2bf7a170976346b"
+  },
+  "layers": [
+    {
+      "default_gain": 1.0,
+      "file": "motor.wav",
+      "id": "motor",
+      "name": "Low motor",
+      "peak": 0.3237899839878082,
+      "rms": 0.1773072871472031,
+      "sha256": "bf24e600fb04b1bde1740d57e53ed45b0bc2e93868b4f4c562562670a60ebd69"
+    },
+    {
+      "default_gain": 1.0,
+      "file": "electrical.wav",
+      "id": "electrical",
+      "name": "Electrical rasp",
+      "peak": 0.3680451512336731,
+      "rms": 0.10951331863556331,
+      "sha256": "60a4e9e737f6f9e6414ea83b3931cf02653c612f5f2d054806bc28efbcf81acc"
+    },
+    {
+      "default_gain": 1.0,
+      "file": "undertone.wav",
+      "id": "undertone",
+      "name": "Lower throb",
+      "peak": 0.12125770002603531,
+      "rms": 0.06779395900300844,
+      "sha256": "f76dc6a6c133ed6db3bad1310621d22685bce483d01ae1036e10c3a2b0475941"
+    },
+    {
+      "default_gain": 1.0,
+      "file": "crackle.wav",
+      "id": "crackle",
+      "name": "Electrical crackle",
+      "peak": 0.07647937536239624,
+      "rms": 0.02503161645116043,
+      "sha256": "3b4af90eeb120c64c5c955c52f9a7aae093e4c65c6f73cddcb7bbc46c046257c"
+    }
+  ],
+  "audition_default_gains": {
+    "motor": 1.0,
+    "electrical": 1.0,
+    "undertone": 1.0,
+    "crackle": 1.0
+  },
+  "sustain_status": "Reviewed clips are 12-second auditions with edge fades. Continuous hold needs seamless sustain; do not naively repeat these faded clips.",
+  "deployment_status": "Historical audition retained; current package sources use recorded hum. Live desktop not updated by this change.",
+  "other_sound_roles": {
+    "ignite": "shared private recording pack; see default-pack.json",
+    "off": "shared private recording pack; see default-pack.json",
+    "swipe": "shared private recording pack; see default-pack.json",
+    "clash": "shared private recording pack; see default-pack.json"
+  },
+  "earlier_saved_mix": {
+    "file": "~/Downloads/kyber-hum-mix.json",
+    "version": 2,
+    "settings": {
+      "motor": {
+        "gain": 1,
+        "enabled": true
+      },
+      "electrical": {
+        "gain": 1.05,
+        "enabled": true
+      },
+      "undertone": {
+        "gain": 1.45,
+        "enabled": true
+      },
+      "air": {
+        "gain": 0.3,
+        "enabled": true
+      }
+    },
+    "status": "Predates revision 3; not evidence of the newly approved playback selection or balance."
+  },
+  "selection_confirmation": "User explicitly confirmed: complete blend",
+  "approved_audio": {
+    "file": "test-artifacts/hum-layers-crackle-2026-10-17/full-hum.wav",
+    "sha256": "1303b079c6b09d3e8a93f56bfcca4836ad7419cf0e54a229c2bf7a170976346b",
+    "layers": [
+      "motor",
+      "electrical",
+      "undertone",
+      "crackle"
+    ],
+    "gains": {
+      "motor": 1.0,
+      "electrical": 1.0,
+      "undertone": 1.0,
+      "crackle": 1.0
+    },
+    "gain_source": "Revision 3 audition balance; earlier version 2 saved weights are historical."
+  },
+  "current_package_default": "assets/sounds/hum/: lightsaber-hum.wav and lightsaber-hummm.wav (see default-pack.json)",
+  "replacement_confirmation": "User explicitly selected: Use the downloaded hum clips"
+}

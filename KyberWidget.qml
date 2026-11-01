@@ -30,7 +30,7 @@ BarWidget {
   readonly property string pluginDir: Qt.resolvedUrl(".").toString().replace("file://", "")
   readonly property string kyber: Util.shellQuote(pluginDir + "bin/kyber")
 
-  property var cfg: ({ active: false, color: "theme", sound: "all", trail: "on", volume: 55 })
+  property var cfg: ({ active: false, color: "theme", sound: "all", trail: "on", aim: "off", aimMirror: "on", volume: 55 })
   property var lastSettings: null
   readonly property bool customColor: /^#[0-9a-fA-F]{6}$/.test(String(cfg.color))
   readonly property color effectiveColor: {
@@ -261,6 +261,7 @@ BarWidget {
       + "\nGlow color: " + (root.cfg.mode === "random" ? "random " + root.cfg.color
         : (root.customColor ? root.cfg.color : "follows the theme"))
       + "\nEffects: " + (root.effects || "your own mix") + " (volume " + root.cfg.volume + ")"
+      + "\nAim: " + (root.cfg.aim === "on" ? "on (mirror " + (root.cfg.aimMirror || "on") + ")" : "off")
       + "\nLeft click: options · Middle: effects · Right: on/off"
 
     onPressed: function(buttonCode) {

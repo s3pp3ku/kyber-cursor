@@ -1,0 +1,42 @@
+KYBER — FIRST NATIVE WINDOWS CURSOR TEST
+
+This is a Windows 11 x64 test app. It replaces the pointer only inside its own
+window. It is not the desktop-wide Kyber app yet. No installation is needed.
+
+1. Extract the entire ZIP to a folder on your Windows PC.
+2. Open kyber-preview.exe. Keep the frames folder beside it.
+3. Move the pointer over the white and dark areas. Hold the LEFT mouse button.
+4. Move slowly, then quickly, and cross the white/dark boundary while holding.
+5. Release, then press again several times. Also try quick taps.
+6. Hold and move outside the window. Your normal pointer should return, with
+   no leftover glow. Move back in and make a fresh press to ignite again.
+7. Try switching to another app while holding. Return and try another press.
+
+Keys:
+  Space / Right / Left — change color
+  B — split, white, or dark background
+  V — matching, fixed light, or fixed dark glow variant
+  S — all sounds, power-up only, or mute
+  Escape — close
+
+Please report: does the glow stay attached to the blade during movement?
+Does it keep the appearance approved in Chrome at 100%? Do ignition, release,
+repeated clicks, leaving the window, and switching apps behave properly?
+
+Start with your usual 100% Windows display scaling. Other display scales and
+moving between monitors are useful follow-up tests. The current trial limits
+cursor images to 256 physical pixels and shows an error above that size.
+Kyber includes the shared private recording pack for power-up, held hum and
+power-down. No separate audio download or setup is needed. To override a role,
+put WAV, MP3, OGG, OGA, or FLAC files in %APPDATA%\kyber-cursor\sounds\ignite,
+sounds\off, or sounds\hum. The held recording loops with a short crossfade.
+All plays the complete sequence; power-up-only omits the hold and release.
+See AUDIO-NOTICE.md and sound-pack.json for recording provenance.
+The Windows default audio device is used.
+Move while holding the left button to draw a fading trail. It clears when
+leaving the window or switching apps.
+
+This is an experimental test build. Its build-info.json records how it was
+built and checked. Real Windows interaction, movement, and audio playback still
+need testing.
+It is unsigned; signing/distribution are separate work before a public release.

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; media-src data: blob:">
+<title>Kyber · Power-up auditions</title>
+<style>
+:root{color-scheme:dark;font:16px/1.6 system-ui,sans-serif;background:#101719;color:#edf2f1}body{max-width:1040px;margin:auto;padding:40px 24px 70px}
+h1{font-size:clamp(32px,5vw,48px);line-height:1.15;margin:8px 0 18px}h2{font-size:23px;margin-top:34px}p{color:#bccdcd;max-width:77ch}
+.eyebrow,.tag{color:#86e5ce;font-size:13px;letter-spacing:.08em}.transport{display:flex;flex-wrap:wrap;align-items:center;gap:14px;position:sticky;top:0;padding:16px 0;background:#101719f5;z-index:1}
+button,input{font:inherit}button{border:1px solid #43625e;border-radius:8px;padding:10px 15px;color:inherit;background:#203631;cursor:pointer}button:hover{filter:brightness(1.15)}button.primary{background:#86e5ce;color:#102420;font-weight:650}button[aria-pressed=true]{outline:2px solid #86e5ce}
+button:focus-visible,input:focus-visible{outline:3px solid #b8fae9;outline-offset:3px}input[type=range]{accent-color:#86e5ce;vertical-align:middle;max-width:28vw}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}article{padding:22px;border:1px solid #364e4b;border-radius:14px;background:#172324}article h3{font-size:23px;margin:5px 0}article p{font-size:14px;min-height:75px}.buttons{display:grid;gap:10px}.status{min-height:26px;color:#86e5ce}
+.reference{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #364e4b}#reference-files{max-width:100%}footer{margin-top:34px;color:#a4b9b7;font-size:14px}
+@media(max-width:650px){.transport{position:static}article p{min-height:0}}
+</style>
+<main>
+<div class="eyebrow">KYBER / POWER-UP / REVISION 2</div>
+<h1>Rising into the hum</h1>
+<p>One new draft: a low electrical hum climbs in pitch and grows into the complete hold blend you approved. Play the full sequence first. The ending fade just closes the preview; power-down will descend.</p>
+<div class="transport"><button id="stop">Stop</button><button id="hum">Approved hum</button><label for="volume">Volume <input id="volume" type="range" min="0" max="100" value="65"> <output id="volume-value">65%</output></label></div>
+<p id="status" class="status" role="status" aria-live="polite">Ready. Choose a power-up.</p>
+<div class="grid" id="designs"></div>
+<h2>Compare with your references</h2>
+<p>Choose <strong>lightsaber-ignite.mp3</strong>, <strong>lightsaber-ignite-burst.mp3</strong> or <strong>sith-lightsaber-1.mp3</strong> from Downloads. The page plays them locally at a comparable volume.</p>
+<input id="reference-files" type="file" accept="audio/*" multiple aria-label="Choose local power-up references"><div id="references"></div>
+<h2>Does the upward motion feel right?</h2>
+<p>Start with the rise itself. Tell me whether it climbs clearly enough, whether it should rise faster or slower, and whether the electrical sound has enough depth.</p>
+<footer>Original generated power-ups with the approved hold hum. Works offline on Windows, Mac and Linux. Local reference files stay on your computer. Live cursor audio is unchanged.</footer>
+</main>
+<script>
+const manifest=/* IGNITION_MANIFEST */{};
+const audioData=/* IGNITION_AUDIO */{};
+let context,master,playing=null,request=0;
+const decoded=new Map(),status=document.getElementById('status');
+function ensureAudio(){
+  if(!context){context=new (window.AudioContext||window.webkitAudioContext)();master=context.createGain();master.connect(context.destination);}
+  master.gain.value=(Number(document.getElementById('volume').value)/100)**2;return context.resume();
+}
+function stop(){
+  request++;
+  if(playing){const old=playing;playing=null;old.source.onended=null;old.output.gain.setTargetAtTime(0,context.currentTime,.006);old.source.stop(context.currentTime+.035);}
+  document.querySelectorAll('button[data-asset]').forEach(button=>button.setAttribute('aria-pressed','false'));status.textContent='Stopped.';
+}
+async function getAudio(key){
+  if(!decoded.has(key)){const raw=atob(audioData[key]),bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));decoded.set(key,context.decodeAudioData(bytes.buffer));}
+  return decoded.get(key);
+}
+function start(buffer,label,token,gain=1){
+  if(token!==request)return;
+  const source=context.createBufferSource(),output=context.createGain();source.buffer=buffer;output.gain.value=gain;source.connect(output);output.connect(master);
+  const next={source,output};source.onended=()=>{if(playing===next){playing=null;status.textContent='Finished. Replay or compare with your reference.';document.querySelectorAll('button[data-asset]').forEach(button=>button.setAttribute('aria-pressed','false'));}};
+  playing=next;source.start(context.currentTime+.025);status.textContent='Playing '+label;
+}
+async function playAsset(key,label,button){
+  stop();const token=request;
+  try{await ensureAudio();const buffer=await getAudio(key);start(buffer,label,token);if(token===request&&button)button.setAttribute('aria-pressed','true');}
+  catch(error){if(token===request)status.textContent='Playback failed: '+error.message;}
+}
+for(const design of manifest.designs){
+  const card=document.createElement('article');
+  card.innerHTML='<div class="tag"></div><h3></h3><p></p><div class="buttons"><button class="primary">Power-up → hum</button><button>Short rise preview</button></div>';
+  card.querySelector('.tag').textContent='NEW RISING DRAFT';card.querySelector('h3').textContent=design.label;card.querySelector('p').textContent=design.description;
+  const buttons=card.querySelectorAll('button');
+  ['cycle','accent'].forEach((kind,index)=>{const button=buttons[index],key=design.id+'-'+kind;button.dataset.asset=key;button.setAttribute('aria-pressed','false');button.setAttribute('aria-label',design.label+(kind==='cycle'?' into approved hum':' short rise preview'));button.addEventListener('click',()=>playAsset(key,button.getAttribute('aria-label'),button));});
+  document.getElementById('designs').append(card);
+}
+document.getElementById('stop').addEventListener('click',stop);
+document.getElementById('hum').addEventListener('click',()=>playAsset('hum','approved hold hum'));
+document.getElementById('volume').addEventListener('input',event=>{document.getElementById('volume-value').textContent=event.target.value+'%';if(master)master.gain.setTargetAtTime((Number(event.target.value)/100)**2,context.currentTime,.015);});
+function referenceGain(buffer){
+  let energy=0,peak=0;for(let channel=0;channel<buffer.numberOfChannels;channel++){const values=buffer.getChannelData(channel);for(const value of values){energy+=value*value;peak=Math.max(peak,Math.abs(value));}}
+  const rms=Math.sqrt(energy/(buffer.length*buffer.numberOfChannels));return rms>1e-7?Math.min(.16*manifest.common_preview_gain/rms,.85/Math.max(peak,1e-9)):1;
+}
+let fileRequest=0;
+document.getElementById('reference-files').addEventListener('change',async event=>{
+  stop();const token=++fileRequest,list=document.getElementById('references');list.replaceChildren();
+  for(const file of [...event.target.files].slice(0,3)){
+    const row=document.createElement('div');row.className='reference';const label=document.createElement('span');label.textContent=file.name;
+    const button=document.createElement('button');button.textContent='Play reference';button.disabled=true;row.append(label,button);list.append(row);
+    try{await ensureAudio();const buffer=await context.decodeAudioData(await file.arrayBuffer());if(token!==fileRequest)return;button.disabled=false;button.addEventListener('click',async()=>{stop();const playToken=request;try{await ensureAudio();start(buffer,file.name,playToken,referenceGain(buffer));}catch(error){if(playToken===request)status.textContent=error.message;}});}
+    catch(error){if(token===fileRequest){button.textContent='Unable to decode';status.textContent='Could not load '+file.name+': '+error.message;}}
+  }
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',stop);
+</script>
+</html>

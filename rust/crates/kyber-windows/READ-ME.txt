@@ -1,0 +1,60 @@
+KYBER CURSOR — WINDOWS DESKTOP APP (x64)
+
+1. Right-click the ZIP and choose Extract All. Keep the extracted files together.
+2. Open kyber-cursor.exe. It replaces the pointer across the ordinary Windows
+   desktop and applications that use the standard Windows cursors.
+   You do not need administrator access, Python, Rust, or an audio download.
+3. Hold a mouse button for about a second. Move while holding to leave a fading
+   trail and hear movement swipes. Release for the power-down. Double-clicks
+   trigger clashes. Brief ordinary clicks do not trigger the power-up or hum.
+4. Click the Kyber blade icon beside the clock for color, glow, trail, sounds,
+   volume, Pause, and Exit. Windows may put it behind the small up arrow.
+   Opening kyber-cursor.exe again also opens its menu.
+5. Choose "Exit and restore Windows pointer" when finished. Pause restores the
+   Windows pointer while leaving the app available in the tray.
+
+Your current recorded sound pack is included, with recorded held hum. Defaults
+are the accepted green, gentle glow for light backgrounds, trail on, all sounds,
+and 56% volume. You can change these from the tray. Sounds use a 300 ms hold
+delay, and the held recording blends in near the end of its chosen power-up.
+
+RECOVERY
+
+If you cannot find the tray icon, open "Restore Windows Cursor.cmd". It closes
+Kyber and reloads your saved Windows cursor scheme. A separate Kyber recovery
+process also reloads that scheme if the main app exits unexpectedly.
+If recovery says Kyber is not responding, end the main kyber-cursor.exe process
+in Task Manager, then open the recovery command again.
+
+The app does not change your saved Windows cursor theme, start with Windows,
+install a driver, request keyboard input, or install anything system-wide.
+Two kyber-cursor.exe processes are expected: the desktop app and its recovery
+process. Exit from the tray closes both. To remove the portable app, exit and
+delete its extracted folder. Optional saved settings remain in
+%APPDATA%\kyber-cursor\windows.json; removing that file resets the defaults.
+
+FIRST WINDOWS DRIVE
+
+This desktop backend was cross-built on Linux. Actual Windows cursor movement,
+audio, DPI changes, crash recovery and click-through trails still need a native
+Windows drive. This is the desktop app, with no demo window or cursor boundary.
+Try Explorer, a browser, text fields, links, resizing a window and dragging.
+If you have several monitors, try each one and cross between them while holding.
+The padded cursor is capped at 256 pixels, so above roughly 250% display scaling
+it stops growing. Games and apps with their own cursors can override the system
+cursor. The lock screen, UAC secure desktop and hidden game cursors are outside
+the supported scope. Pause Kyber before changing the Windows cursor theme.
+
+For an issue, report your Windows version, display scaling, what you were doing,
+and what looked or sounded wrong. The small local status file is
+%APPDATA%\kyber-cursor\windows-status.txt. Nothing is sent automatically.
+If audio starts without an output device, connect one and restart Kyber.
+
+CUSTOM SOUNDS
+
+Optional custom clips go under %APPDATA%\kyber-cursor\sounds\ in the folders
+ignite, off, hum, swipe, and clash. Restart Kyber after adding them. WAV, MP3,
+Ogg and FLAC are supported. A role with no custom clips uses the embedded pack.
+
+Code license: CODE-LICENSE.txt. Recording provenance: AUDIO-NOTICE.md and
+sound-pack.json. These private recordings are separate from the code license.

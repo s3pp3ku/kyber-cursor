@@ -15,10 +15,12 @@ fn icons_dir() -> PathBuf {
 }
 
 fn state_file(name: &str) -> PathBuf {
-    std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| icons_dir().parent().unwrap().join(".config"))
-        .join("kyber-cursor")
+    // The same settings folder the CLI writes. (This used to fall back to
+    // `~/.local/share/.config` when XDG_CONFIG_HOME is unset, which is the
+    // normal case in a systemd user session: the daemon then never found
+    // `active` and silently drew nothing.)
+    kyber_core::paths::settings_dir()
+        .unwrap_or_else(|_| icons_dir().join("..").join("kyber-cursor"))
         .join(name)
 }
 

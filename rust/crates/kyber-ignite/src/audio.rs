@@ -7,14 +7,14 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::time::Duration;
 
 use kyber_core::config::{SmallRng, SoundMode};
 use kyber_core::sound_pack::{self, ClipSource, RATE as SR};
-use rodio::{buffer::SamplesBuffer, Source};
+use rodio::{Source, buffer::SamplesBuffer};
 
 fn state_dir() -> PathBuf {
     std::env::var("XDG_CONFIG_HOME")
@@ -388,7 +388,9 @@ impl Player {
             }
         });
         let sink = rodio::Sink::connect_new(&mixer);
-        sink.set_volume(gain());
+        // Match the more present swipe mix used by the Windows desktop app,
+        // while respecting the shared volume slider and avoiding clipping.
+        sink.set_volume((gain() * 2.4).min(1.0));
         sink.append(SamplesBuffer::new(clip.channels, clip.rate, clip.samples));
         if let Ok(mut voices) = self.voices.lock() {
             voices.retain(|voice| !voice.empty());

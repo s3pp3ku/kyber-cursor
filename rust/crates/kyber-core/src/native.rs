@@ -79,8 +79,13 @@ pub fn export(out: &Path, color: &str, nominal: u32, scale: u32) -> Result<(), S
             let phase = held.unwrap_or(0) as f64 / HOLD_FRAMES as f64 * std::f64::consts::TAU;
             let mut frame = RgbaImage::new(side, side);
             for (spec, pixels) in &layers {
-                let mut layer =
-                    RgbaImage::from_raw(side, side, pixels.composite(side, ppu, phase)).unwrap();
+                let composited = match held {
+                    // Held frames carry the extra glow boost; ignition still
+                    // hands over at the accepted full-bright frame.
+                    Some(_) => pixels.composite_held(side, ppu, phase),
+                    None => pixels.composite(side, ppu, phase),
+                };
+                let mut layer = RgbaImage::from_raw(side, side, composited).unwrap();
                 for (x, y, pixel) in layer.enumerate_pixels_mut() {
                     let opacity = if let (Some(from), Some(to)) = (spec.from, spec.to) {
                         let dx = to[0] - from[0];
@@ -214,11 +219,22 @@ mod tests {
                 }
                 held.push(img);
             }
-            assert_eq!(held[0], full, "ignition must join the held loop seamlessly");
             assert!(
                 held.iter().skip(1).any(|frame| *frame != full),
                 "halo never shimmers"
             );
+            // Held frames must read brighter than the still ignited frame; the
+            // ignition hand-over deliberately gains light instead of matching.
+            let alpha_sum = |img: &image::RgbaImage| -> u64 {
+                img.pixels().map(|p| u64::from(p[3])).sum()
+            };
+            let still_light = alpha_sum(&full);
+            for (phase, frame) in held.iter().enumerate() {
+                assert!(
+                    alpha_sum(frame) > still_light * 115 / 100,
+                    "{bank} held-{phase} did not gain glow"
+                );
+            }
             let delta = |a: &image::RgbaImage, b: &image::RgbaImage| -> u64 {
                 a.as_raw()
                     .iter()

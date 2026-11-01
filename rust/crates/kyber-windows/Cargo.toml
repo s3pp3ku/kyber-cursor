@@ -1,0 +1,27 @@
+[package]
+name = "kyber-windows"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Desktop-wide Windows Kyber cursor, recorded audio, and fading trail."
+
+[[bin]]
+name = "kyber-cursor"
+path = "src/main.rs"
+
+[dependencies]
+kyber-core = { workspace = true }
+kyber-preview = { path = "../kyber-preview" }
+image = "0.25"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security",
+    "Win32_System_LibraryLoader", "Win32_System_Threading",
+    "Win32_System_StationsAndDesktops", "Win32_System_RemoteDesktop",
+    "Win32_UI_Controls_Dialogs", "Win32_UI_HiDpi", "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

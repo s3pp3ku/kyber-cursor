@@ -116,6 +116,102 @@ pub fn rasterize_role(kind: &str, accent: &str, glow: &str, lit: bool, px: u32) 
     rasterize(&body, &halo, lit, px)
 }
 
+/// The whole pointer body (not just the bloom), rasterized once per color and
+/// pixel size and then turned onto any heading.
+///
+/// Aim mode redraws this every frame. Rasterizing per frame would be absurd,
+/// and the body art never changes while a color and a size stay fixed, so the
+/// pixmap is built once and only transformed afterwards.
+pub struct AimCursor {
+    px: tiny_skia::Pixmap,
+    /// Device px per viewBox unit, the resolution the body was baked at.
+    ppu: f64,
+    /// The hotspot (the blade's tip) inside the baked bitmap.
+    tip_px: (f64, f64),
+    radius: f64,
+}
+
+impl AimCursor {
+    /// Bake the unlit pointer — the same body the XCursor theme uses — at
+    /// `px` device pixels square.
+    pub fn build(accent: &str, px: u32) -> Result<Self, String> {
+        if px == 0 {
+            return Err("aim cursor: zero pixel size".into());
+        }
+        let (body, _halo) = geometry::pointer(accent, accent, false);
+        let rgba = rasterize(&body, "", false, px);
+        let mut premult = Vec::with_capacity(rgba.len());
+        for c in rgba.chunks_exact(4) {
+            let a = c[3] as u32;
+            premult.extend_from_slice(&[
+                (c[0] as u32 * a / 255) as u8,
+                (c[1] as u32 * a / 255) as u8,
+                (c[2] as u32 * a / 255) as u8,
+                c[3],
+            ]);
+        }
+        let size = tiny_skia::IntSize::from_wh(px, px).ok_or("aim cursor: bad size")?;
+        let pixmap = tiny_skia::Pixmap::from_vec(premult, size)
+            .ok_or("aim cursor: pixmap rejected the buffer")?;
+        let ppu = px as f64 / geometry::VIEW[2];
+        let tip = geometry::tip();
+        let tip_px = ((tip.0 - geometry::VIEW[0]) * ppu, (tip.1 - geometry::VIEW[1]) * ppu);
+        // Farthest viewBox corner from the tip: the cursor never draws outside
+        // a circle of this radius, whatever the heading.
+        let (x0, y0) = (geometry::VIEW[0], geometry::VIEW[1]);
+        let radius = [(x0, y0), (x0 + geometry::VIEW[2], y0), (x0, y0 + geometry::VIEW[3]), (x0 + geometry::VIEW[2], y0 + geometry::VIEW[3])]
+            .into_iter()
+            .map(|c| (c.0 - tip.0).hypot(c.1 - tip.1))
+            .fold(0.0, f64::max)
+            * ppu
+            + 2.0;
+        Ok(Self { px: pixmap, ppu, tip_px, radius })
+    }
+
+    pub fn ppu(&self) -> f64 {
+        self.ppu
+    }
+
+    /// Device px from the tip to the farthest drawn pixel (for damage rects).
+    pub fn radius(&self) -> f64 {
+        self.radius
+    }
+
+    /// Draw the whole cursor rotated about its tip, which lands on `cursor`.
+    ///
+    /// `scale` converts baked pixels to destination pixels: bake at twice the
+    /// device size and pass 0.5 and the turn still resamples from a sharper
+    /// source than the screen can show.
+    pub fn draw(
+        &self,
+        dst: &mut tiny_skia::Pixmap,
+        heading: f64,
+        mirror: bool,
+        cursor: (f64, f64),
+        scale: f64,
+    ) {
+        let m = crate::aim::glyph_transform(
+            heading,
+            mirror,
+            (self.tip_px.0 * scale, self.tip_px.1 * scale),
+            cursor,
+        )
+        .then(crate::aim::Mat::scale(scale, scale));
+        let [a, b, c, d, e, f] = m.row();
+        dst.draw_pixmap(
+            0,
+            0,
+            self.px.as_ref(),
+            &tiny_skia::PixmapPaint {
+                quality: tiny_skia::FilterQuality::Bilinear,
+                ..Default::default()
+            },
+            tiny_skia::Transform::from_row(a, b, c, d, e, f),
+            None,
+        );
+    }
+}
+
 pub fn to_png(rgba: &[u8], px: u32) -> Vec<u8> {
     use image::ImageEncoder;
     let mut buf = Vec::new();
@@ -165,12 +261,46 @@ pub(crate) struct OverlayPixels {
     pub core: Vec<u8>,
 }
 
+/// Held-state glow. The still ignited frame stays the accepted 8/10 look; the
+/// held loop pushes the emitted light past it so the blades visibly bloom
+/// while the button is down.
+///
+/// The boost expands optical depth instead of adding a flat gain: the faint
+/// outer fringe lifts far more than the dense center, so the glow reads wider
+/// as well as brighter, and nothing clips into a flat colored plate.
+const HELD_GLOW_GAMMA: f64 = 1.9;
+const HELD_GLOW_GAIN: f64 = 1.18;
+
 impl OverlayPixels {
     pub(crate) fn composite(&self, px: u32, ppu: f64, phase: f64) -> Vec<u8> {
         let mut out = self.haze.clone();
         shimmer_haze(&mut out, px, ppu, phase);
         over(&mut out, &self.core);
         out
+    }
+
+    /// Same light as [`Self::composite`], plus the held-state glow boost.
+    pub(crate) fn composite_held(&self, px: u32, ppu: f64, phase: f64) -> Vec<u8> {
+        let mut out = self.haze.clone();
+        shimmer_haze(&mut out, px, ppu, phase);
+        boost_held_glow(&mut out);
+        over(&mut out, &self.core);
+        out
+    }
+}
+
+/// Raise only the emitted light. Opaque core and body pixels keep their exact
+/// value because the boost runs before the core is composited over the haze.
+fn boost_held_glow(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        let alpha = pixel[3] as f64 / 255.0;
+        if alpha <= 0.0 {
+            continue;
+        }
+        let expanded = 1.0 - (1.0 - alpha).powf(HELD_GLOW_GAMMA);
+        pixel[3] = (expanded * HELD_GLOW_GAIN * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8;
     }
 }
 
@@ -212,10 +342,12 @@ fn glow_of(
     let gray = GrayImage::from_raw(px, px, alpha).expect("gray");
     let [r, gg, b] = parse_hex_bytes(col_hex);
     let mut out = vec![0u8; (px * px * 4) as usize];
-    for (radius_units, strength) in [(9.5f32, 1.4f32), (3.6, 1.8), (1.6, 1.0)] {
+    // The widest, softest layer is the aura. Increase only this layer for
+    // aura level 7; the closer colored glow and white core stay unchanged.
+    for (radius_units, strength) in [(11.0f32, 1.96f32), (3.6, 1.8), (1.6, 1.0)] {
         let blurred = image::imageops::blur(&gray, radius_units * unit as f32).into_raw();
         // Raise the user's accepted 6/10 glow to 8/10 in the near-blade
-        // layers. Preserve the wide haze, blur radii and stable white core.
+        // layers. The aura has its own wider blur and gain above.
         let boost = if radius_units < 5.0 {
             (4.0 / 3.0) * (8.0 / 4.5)
         } else {
@@ -252,12 +384,12 @@ fn haze_alpha(alpha: u8, strength: f32) -> u8 {
     (-(-depth).exp_m1() * 255.0).round().clamp(0.0, 255.0) as u8
 }
 
-fn feathered_rim(inner: &str) -> String {
+fn feathered_rim(inner: &str, blur: f64) -> String {
     // The filter uses vector units, so the fade has the same logical width at
     // every export scale. Keep it off the white core and pointer body.
     let (x, y, w, h) = overlay_viewbox();
     format!(
-        "<defs><filter id=\"rim-fade\" filterUnits=\"userSpaceOnUse\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" color-interpolation-filters=\"sRGB\"><feGaussianBlur stdDeviation=\"1.0\"/></filter></defs><g filter=\"url(#rim-fade)\">{inner}</g>"
+        "<defs><filter id=\"rim-fade\" filterUnits=\"userSpaceOnUse\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" color-interpolation-filters=\"sRGB\"><feGaussianBlur stdDeviation=\"{blur}\"/></filter></defs><g filter=\"url(#rim-fade)\">{inner}</g>"
     )
 }
 
@@ -304,21 +436,21 @@ fn upper_blade_fill(col: &str) -> String {
 fn overlay_beam(from: (f64, f64), to: (f64, f64), color: &str, width: f64, light: bool) -> String {
     let tint = crate::color::glow_tint(color, light);
     let core = crate::color::blade_core_color(color);
-    let contrast_opacity = if light {
-        " opacity=\"0.55\""
-    } else {
-        " opacity=\"0.22\""
-    };
-    let rim = geometry::line(
-        from,
-        to,
-        &darken(&tint, 0.65),
-        3.8 * width,
-        contrast_opacity,
-    ) + &geometry::line(from, to, &tint, 3.0 * width, " opacity=\"0.85\"");
+    if light {
+        // Over white a white-hot center has nothing to stand against, so the
+        // blade gets a crisp outline in a deeper shade of the glow color, a
+        // solid colored band, and a slimmer hot center inside it.
+        let rim = geometry::line(from, to, &darken(&tint, 0.45), 3.8 * width, "")
+            + &geometry::line(from, to, &tint, 3.0 * width, "");
+        return feathered_rim(&rim, 0.45)
+            + &geometry::line(from, to, &core, 2.0 * width, "")
+            + &geometry::line(from, to, "#ffffff", 1.0 * width, "");
+    }
+    let rim = geometry::line(from, to, &darken(&tint, 0.65), 3.8 * width, " opacity=\"0.22\"")
+        + &geometry::line(from, to, &tint, 3.0 * width, " opacity=\"0.85\"");
     // A single continuous treatment for every shade; pale colors no longer
     // lose the white center when crossing a luminance/boost threshold.
-    feathered_rim(&rim)
+    feathered_rim(&rim, 1.0)
         + &geometry::line(from, to, &core, 2.0 * width, "")
         + &geometry::line(from, to, "#ffffff", 1.1 * width, "")
 }
@@ -477,6 +609,21 @@ mod tests {
     }
 
     #[test]
+    fn held_glow_boost_lifts_fringe_more_than_center() {
+        let mut pixels = vec![
+            0, 0, 0, 0, 10, 10, 10, 64, 20, 20, 20, 128, 30, 30, 30, 255,
+        ];
+        boost_held_glow(&mut pixels);
+        assert_eq!(pixels[3], 0, "transparent stays transparent");
+        assert_eq!(pixels[15], 255, "opaque stays opaque");
+        assert!(pixels[7] > 64 && pixels[11] > 128);
+        assert!(
+            f64::from(pixels[7]) / 64.0 > f64::from(pixels[11]) / 128.0,
+            "faint fringe should gain proportionally more than the dense center"
+        );
+    }
+
+    #[test]
     fn boosted_haze_has_no_clipped_alpha_plateau() {
         for strength in [0.6, 1.2, 2.4, 4.9] {
             let values: Vec<_> = (0..=255).map(|a| haze_alpha(a, strength)).collect();
@@ -492,7 +639,7 @@ mod tests {
         let px = 256;
         let rim = geometry::line((0.0, 24.0), (48.0, 24.0), "#0316ff", 6.0, "");
         let sharp = render_overlay_doc(&rim, px).render(px);
-        let soft = render_overlay_doc(&feathered_rim(&rim), px).render(px);
+        let soft = render_overlay_doc(&feathered_rim(&rim, 1.0), px).render(px);
         let alpha = |img: &[u8], y: usize| img[(y * px as usize + 128) * 4 + 3];
         let transitions = |img: &[u8]| {
             (0..px as usize)
@@ -514,6 +661,59 @@ mod tests {
                 assert_eq!(dst, &[255, 255, 255, 255]);
             }
         }
+    }
+
+    #[test]
+    fn aim_cursor_turns_the_whole_blade_about_the_tip() {
+        let art = AimCursor::build("#7aa2f7", 128).unwrap();
+        assert!(art.radius() >= 90.0, "radius {}", art.radius());
+        assert!((art.ppu() - 128.0 / 48.0).abs() < 1e-9);
+        let bbox = |frame: &tiny_skia::Pixmap| {
+            let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0, 0);
+            for (i, c) in frame.data().chunks_exact(4).enumerate() {
+                if c[3] == 0 {
+                    continue;
+                }
+                let (x, y) = (i as u32 % frame.width(), i as u32 / frame.width());
+                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+            }
+            (x0, y0, x1, y1)
+        };
+        let mut frame = tiny_skia::Pixmap::new(256, 256).unwrap();
+        let tip = (100.0, 100.0);
+        art.draw(&mut frame, 0.0, false, tip, 1.0);
+        let (x0, _, x1, _) = bbox(&frame);
+        // The sharp end is the hotspot and the hilt trails behind it, so a
+        // rightward heading puts the whole body to the left of the cursor.
+        assert!((99..=102).contains(&x1), "tip ends at the hotspot: {x1}");
+        assert!(tip.0 - f64::from(x0) > 60.0, "blade trails behind: {x0}");
+
+        // Same tip, heading down: the blade now runs above the hotspot.
+        let mut frame = tiny_skia::Pixmap::new(256, 256).unwrap();
+        art.draw(&mut frame, 90.0, false, tip, 1.0);
+        let (_, y0, _, y1) = bbox(&frame);
+        assert!((99..=102).contains(&y1), "tip at the hotspot: {y1}");
+        assert!(tip.1 - f64::from(y0) > 60.0, "blade trails above: {y0}");
+
+        // Half scale: the same blade at half the size, tip still on the cursor
+        // (the daemon bakes at 2× and draws at 0.5).
+        let mut frame = tiny_skia::Pixmap::new(256, 256).unwrap();
+        art.draw(&mut frame, 0.0, false, tip, 0.5);
+        let (x0, _, x1, _) = bbox(&frame);
+        assert!((99..=102).contains(&x1), "{x1}");
+        let reach = tip.0 - f64::from(x0);
+        assert!(reach > 55.0 && reach < 65.0, "half-scale reach {reach}");
+
+        // Mirroring reflects the glyph, so the pixels differ...
+        let mut plain = tiny_skia::Pixmap::new(256, 256).unwrap();
+        let mut flipped = tiny_skia::Pixmap::new(256, 256).unwrap();
+        art.draw(&mut plain, 45.0, false, tip, 1.0);
+        art.draw(&mut flipped, 45.0, true, tip, 1.0);
+        assert_ne!(plain.data(), flipped.data());
+        // ...but the tip stays put and the footprint only mirrors.
+        let (px0, py0, px1, py1) = bbox(&plain);
+        let (fx0, fy0, fx1, fy1) = bbox(&flipped);
+        assert!(fx0 <= px1 && fy0 <= py1 && fx1 >= px0 && fy1 >= py0);
     }
 
     #[test]

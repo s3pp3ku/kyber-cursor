@@ -25,6 +25,7 @@ Every cursor role, generated from the accent:
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
 - Three effects levels, picked in one click: **Full** (glow, drag trail, lightsaber sparks, short hard cutting sparks, mostly hot orange-red with some in your glow color, and every sound; the default), **Minimal** (glow and trail, no sparks, only the ignite sounds) and **Basic** (just the glow, silent). Everything else (each sound mode, the trail switch, how long sparks last and how close together they fly, other trail looks such as ribbon, beads, echoes and bubbles) is tucked under "More settings". The trail looks are adapted from [Plume](https://github.com/qempexe/plume) by Andrei C. Popa (see [Credits](#credits)).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
+- Optional **Aim** (off by default): the blade turns to face the direction you are moving and holds that angle when you stop, Worms-cursor style. It is drawn by the native overlay runtime, which hides the compositor pointer while it is on and gives it back when you switch aim off or the runtime exits. `kyber aim on|off|toggle`, plus the switch under "More settings". Aim needs the native overlay runtime: the XCursor theme is a static bitmap, so `kyber aim on` says so and stays off where that runtime is not installed.
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
@@ -124,6 +125,9 @@ kyber off          # back to Adwaita (the glow stops too)
 kyber effects full|minimal|basic   # the whole experience in one switch (full is the default)
 kyber sound        # cycle sound mode: all -> ignite -> mute
 kyber trail        # toggle the drag trail (or `kyber trail on` / `kyber trail off`)
+kyber aim          # toggle aim: the blade turns to face your movement (native overlay runtime)
+kyber aim on|off   # hold the angle when the pointer stops; default off
+kyber aim mirror   # flip the artwork as the blade turns so the lit edge stays on the near side
 kyber color theme|custom|random   # where the glow color comes from
 kyber color #ff7a00   # a color of your own (switches to custom)
 kyber random       # roll a new random color now (switches to random)
@@ -186,13 +190,18 @@ hashes are in [`assets/sounds/manifest.json`](assets/sounds/manifest.json).
 Run `kyber doctor`. It checks the dependencies, the `input` group, the glow service, the hooks and the sounds, and prints the fix for anything missing. It only reads; it never changes your system. If you use an AI coding agent to set this up, point it at `AGENTS.md`.
 
 ## How it works, and its limits
-On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A Rust Wayland layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched.
+On Hyprland 0.56, `hyprctl setcursor` only changes what *future* cursor requests resolve to; the image on screen stays until an app re-requests its cursor, which never happens mid-click. So the ignition is not a cursor swap. A Rust Wayland layer-shell overlay (click-through, empty input region) draws the glow *under* the real cursor and follows it. The real pointer is never touched — unless aim mode is on, where the overlay becomes the pointer for as long as you keep it on (see below).
 
 - The glow and trail are made for dark and mid-tone backgrounds. On very light pages they are subtler (a defined but faint halo), so they don't look like the demo there.
 - The overlay doesn't know the current cursor shape, so the glow also appears around an I-beam during a text drag.
 - Right after a theme or color change, the rebuild takes 1-2 s. The glow updates at once, but the real pointer image refreshes the next time you move onto another window or the bar. That is how Hyprland handles cursor themes, and it affects every cursor theme, not just Kyber.
 - The glow only follows the cursor's logical position. On unusual scaling setups the overlay can be slightly off; set `CURSOR_OVERLAY_SCALE` (e.g. `1.05`) in the service environment to fine-tune.
 - Tested on one machine (Hyprland 0.56, 1.6x scaling). Reports from other setups are welcome.
+
+### Aim mode, and what it costs
+With aim on, the overlay draws *the whole cursor* (not just the glow) turned about its tip, so the compositor's own pointer is hidden for as long as aim is on (`hyprctl eval 'hl.config({ cursor = { invisible = true } })'`, flipped back to `false` on `kyber aim off`, on SIGTERM/SIGINT, on a panic, and whenever the runtime exits). The overlay loop runs at 60 fps while aim is on, but it only uploads a frame when the picture can change — the pointer moved, the heading is still turning, or the blade is lit — so a still pointer costs about a percent of one core, and the damage rectangle stays around the cursor (its old footprint plus its new one), never the full screen.
+
+What is not handled: **SIGKILL**, a crash inside the graphics driver, a power cut, or anything else that stops the process without letting it run cleanup. The pointer then stays hidden until Hyprland reloads its config or you run `hyprctl eval 'hl.config({ cursor = { invisible = false } })'`. This is a deliberate trade: the effect is worth less than the pointer, which is why the pointer is only hidden after the replacement is already on screen.
 
 ## Safety
 - The listener opens `/dev/input/event*` **read-only and without grabbing** them (no `EVIOCGRAB`), so clicks still reach Hyprland and apps unchanged. It counts button presses only: no keys, no coordinates from the device, no network.

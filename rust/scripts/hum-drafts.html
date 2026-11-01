@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; media-src data: blob:">
+<title>Kyber · Fresh hum drafts</title>
+<style>
+:root{color-scheme:dark;font:16px/1.6 system-ui,sans-serif;background:#101719;color:#edf2f1}
+body{max-width:940px;margin:auto;padding:40px 24px 70px}h1{font-size:clamp(32px,5vw,48px);line-height:1.15;margin:8px 0 18px}
+h2{font-size:23px;margin-top:36px}p{color:#bccdcd;max-width:72ch}.eyebrow,.number{color:#86e5ce;font-size:13px;letter-spacing:.08em}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:16px 0;position:sticky;top:0;background:#101719f5;z-index:1}
+button,input{font:inherit}button{border:1px solid #43625e;border-radius:8px;padding:10px 17px;color:inherit;background:#203631;cursor:pointer}
+button:hover{background:#2d4a43}button:focus-visible,input:focus-visible{outline:3px solid #86e5ce;outline-offset:3px}input[type=range]{accent-color:#86e5ce;vertical-align:middle;max-width:30vw}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}article{padding:22px;border:1px solid #364e4b;border-radius:14px;background:#172324}
+h3{margin:5px 0;font-size:22px}article p{font-size:14px;min-height:72px}.status{min-height:26px;color:#86e5ce}.reference{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #364e4b}
+small{color:#a4b9b7}#reference-files{max-width:100%}footer{margin-top:35px;color:#a4b9b7;font-size:14px}
+</style>
+<main>
+<div class="eyebrow">KYBER / HUM DESIGN / FIRST DRAFTS</div>
+<h1>A fresh starting point.</h1>
+<p>Three new hums guided by the two references you selected. Start with 1 and 2, then try the middle direction. Each plays for nine seconds at matched average volume.</p>
+<div class="controls"><button id="stop">Stop</button><label for="volume">Volume <input id="volume" type="range" min="0" max="100" value="60"> <output id="level">60%</output></label></div>
+<p id="status" class="status" role="status" aria-live="polite">Ready when you are.</p>
+<div class="grid">
+<article><div class="number">DIRECTION 1</div><h3>Layered</h3><p>First reference direction: a low body with more emphasis on the upper overtones.</p><button data-draft="01-layered.wav">Play 1</button></article>
+<article><div class="number">DIRECTION 2</div><h3>Rounded</h3><p>Second reference direction: a low body with a stronger low overtone and gentler upper tones.</p><button data-draft="02-rounded.wav">Play 2</button></article>
+<article><div class="number">DIRECTION 3</div><h3>Balanced</h3><p>A middle direction, combining elements of the first two tonal balances.</p><button data-draft="03-balanced.wav">Play 3</button></article>
+</div>
+<h2>Compare with your reference clips</h2>
+<p>Choose <strong>lightsaber-hum.mp3</strong> and <strong>lightsaber-hummm.mp3</strong> from Downloads. The page plays them locally and matches their average volume for comparison.</p>
+<input id="reference-files" type="file" accept="audio/*" multiple aria-label="Choose local hum references">
+<div id="references"></div>
+<h2>What would you change?</h2>
+<p>Tell me which direction is closest and what still feels wrong: deeper, brighter, rougher, smoother, more movement, or less movement. “None are close” is useful feedback too.</p>
+<footer>The three drafts are original generated sounds. This page works offline and can be copied to Windows, Mac or Linux. Local reference files stay on your computer. Your live cursor audio is unchanged.</footer>
+</main>
+<script>
+const draftAudio = /* DRAFT_AUDIO */{};
+let context, master, playing, request=0;
+const decoded=new Map();
+const status=document.getElementById('status');
+function ensureAudio(){
+  if(!context){context=new (window.AudioContext||window.webkitAudioContext)();master=context.createGain();master.connect(context.destination);}
+  master.gain.value=(Number(document.getElementById('volume').value)/100)**2;
+  return context.resume();
+}
+function stop(){
+  request++;
+  if(playing){playing.onended=null;playing.stop();playing=null;}
+  document.querySelectorAll('button[data-draft]').forEach(button=>button.setAttribute('aria-pressed','false'));
+  status.textContent='Stopped.';
+}
+function playbackGain(buffer){
+  const trim=Math.min(Math.floor(buffer.sampleRate*.2),Math.floor(buffer.length/8));
+  let energy=0,peak=0;
+  for(let channel=0;channel<buffer.numberOfChannels;channel++){
+    const data=buffer.getChannelData(channel);
+    for(let i=0;i<buffer.length;i++){
+      peak=Math.max(peak,Math.abs(data[i]));
+      if(i>=trim&&i<buffer.length-trim)energy+=data[i]*data[i];
+    }
+  }
+  const rms=Math.sqrt(energy/((buffer.length-2*trim)*buffer.numberOfChannels));
+  return rms>1e-7?Math.min(.22/rms,.85/Math.max(peak,1e-7)):1;
+}
+function play(buffer,label,token){
+  if(token!==request)return;
+  const source=context.createBufferSource(),gain=context.createGain();
+  source.buffer=buffer;gain.gain.value=playbackGain(buffer);source.connect(gain);gain.connect(master);
+  source.onended=()=>{if(playing===source){playing=null;status.textContent='Finished. Try another direction or your reference.';}};
+  playing=source;source.start();status.textContent='Playing '+label;
+}
+document.querySelectorAll('button[data-draft]').forEach(button=>{
+  button.setAttribute('aria-pressed','false');
+  button.addEventListener('click',async()=>{
+    stop();const token=request;
+    try{
+      await ensureAudio();
+      const name=button.dataset.draft;
+      if(!decoded.has(name)){
+        const raw=atob(draftAudio[name].split(',')[1]);
+        const bytes=Uint8Array.from(raw,character=>character.charCodeAt(0));
+        decoded.set(name,await context.decodeAudioData(bytes.buffer));
+      }
+      play(decoded.get(name),button.textContent.replace('Play','direction'),token);
+      if(token===request)button.setAttribute('aria-pressed','true');
+    }catch(error){if(token===request)status.textContent='Could not play this sound: '+error.message;}
+  });
+});
+document.getElementById('reference-files').addEventListener('change',async event=>{
+  stop();const list=document.getElementById('references');list.replaceChildren();
+  for(const file of [...event.target.files].slice(0,2)){
+    const row=document.createElement('div');row.className='reference';
+    const label=document.createElement('span');label.textContent=file.name;
+    const button=document.createElement('button');button.textContent='Play reference';button.disabled=true;
+    row.append(label,button);list.append(row);
+    try{
+      await ensureAudio();
+      const buffer=await context.decodeAudioData(await file.arrayBuffer());
+      button.disabled=false;
+      button.addEventListener('click',async()=>{stop();const token=request;try{await ensureAudio();play(buffer,file.name,token);}catch(error){status.textContent=error.message;}});
+    }catch(error){button.textContent='Unable to decode';status.textContent='Could not open '+file.name+': '+error.message;}
+  }
+});
+document.getElementById('stop').addEventListener('click',stop);
+document.getElementById('volume').addEventListener('input',event=>{
+  document.getElementById('level').textContent=event.target.value+'%';
+  if(master)master.gain.value=(Number(event.target.value)/100)**2;
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
+window.addEventListener('pagehide',stop);
+</script>
+</html>

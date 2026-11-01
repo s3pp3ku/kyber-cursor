@@ -41,29 +41,14 @@ fn write_file(name: &str, value: &str) {
 }
 
 fn load_config() -> KyberConfig {
-    let mode = ColorMode::parse(&read_file("color-mode")).unwrap_or_else(|| {
-        if state_dir().join("color").exists() {
-            ColorMode::Custom
-        } else {
-            ColorMode::Theme
-        }
-    });
-    KyberConfig {
-        active: state_dir().join("active").exists(),
-        mode,
-        custom: read_file("color"),
-        random: read_file("random-color"),
-        sound: SoundMode::parse(&read_file("sound-mode")).unwrap_or(SoundMode::All),
-        trail: read_file("trail-mode") != "off",
-        look: TrailLook::load(&state_dir()),
-        volume: read_file("volume").parse().unwrap_or(55),
-    }
+    KyberConfig::load(&state_dir())
 }
 
 /// Preserve the existing `bin/kyber config` contract used by the tray panel.
 /// The portable settings model keeps a boolean internally, but QML compares
 /// `trail` to "on"/"off" and needs `color` for its icon and tooltip.
 fn widget_config(cfg: &KyberConfig, accent: Option<&str>) -> serde_json::Value {
+    let aim = kyber_core::aim::AimSettings::load(&state_dir());
     serde_json::json!({
         "active": cfg.active,
         "mode": cfg.mode.as_str(),
@@ -72,6 +57,8 @@ fn widget_config(cfg: &KyberConfig, accent: Option<&str>) -> serde_json::Value {
         "random": cfg.random,
         "sound": cfg.sound,
         "trail": if cfg.trail { "on" } else { "off" },
+        "aim": if aim.enabled { "on" } else { "off" },
+        "aimMirror": if aim.mirror { "on" } else { "off" },
         "volume": cfg.volume,
         "style": cfg.look.style,
         "particles": cfg.look.particles,
@@ -82,7 +69,7 @@ fn widget_config(cfg: &KyberConfig, accent: Option<&str>) -> serde_json::Value {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: kyber apply | off | effects [full|minimal|basic] | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | sparks [sparks|bubbles|off|life MS|gap PX|colors mixed|glow|default] | style [comet|ribbon|beads|echoes|none] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
+    eprintln!("usage: kyber apply | off | effects [full|minimal|basic] | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | aim [on|off|toggle] | aim mirror [on|off|toggle] | sparks [sparks|bubbles|off|life MS|gap PX|colors mixed|glow|default] | style [comet|ribbon|beads|echoes|none] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
     std::process::exit(2);
 }
 
@@ -137,29 +124,7 @@ fn linux_accent() -> Option<String> {
 
 #[cfg(target_os = "linux")]
 fn linux_accent() -> Option<String> {
-    for rel in [
-        ".local/state/omarchy/current/theme/colors.toml",
-        ".config/omarchy/current/theme/colors.toml",
-    ] {
-        let p = home().join(rel);
-        if let Ok(text) = std::fs::read_to_string(&p) {
-            for line in text.lines() {
-                let line = line.trim();
-                if let Some(v) = line.strip_prefix("accent") {
-                    let v = v
-                        .trim()
-                        .trim_start_matches(['=', ' ', '\t', '"'])
-                        .trim_end_matches('"')
-                        .trim();
-                    let v = v.trim_matches('"').trim();
-                    if v.len() == 7 && v.starts_with('#') {
-                        return Some(v.to_lowercase());
-                    }
-                }
-            }
-        }
-    }
-    None
+    kyber_core::config::theme_accent()
 }
 
 fn cmd_volume(args: &[String]) {
@@ -207,6 +172,61 @@ fn cmd_trail(args: &[String]) {
     }
     write_file("trail-mode", if enabled { "on" } else { "off" });
     println!("{}", if enabled { "on" } else { "off" });
+}
+
+/// Aim only exists in the native overlay runtime: the XCursor theme is a
+/// static bitmap, so nothing in the legacy path can turn the blade. Refusing
+/// here (and leaving the switch off) is honest; a silently-on switch that
+/// does nothing would be worse.
+fn native_overlay_runtime() -> bool {
+    read_file("native-runtime") == "overlay"
+}
+
+fn aim_mirror_on() -> bool {
+    match read_file(kyber_core::aim::MIRROR_FILE).as_str() {
+        "off" => false,
+        "on" => true,
+        // Mirroring is on unless it is switched off.
+        _ => true,
+    }
+}
+
+fn toggle_value(arg: Option<&str>, currently: bool) -> bool {
+    match arg {
+        Some("on") => true,
+        Some("off") => false,
+        Some("toggle") | None => !currently,
+        _ => {
+            eprintln!("usage: kyber aim [on|off|toggle] | kyber aim mirror [on|off|toggle]");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// `kyber aim on|off|toggle` and `kyber aim mirror on|off|toggle`.
+fn cmd_aim(args: &[String]) {
+    match args.first().map(String::as_str) {
+        Some("mirror") => {
+            let on = toggle_value(args.get(1).map(String::as_str), aim_mirror_on());
+            write_file(kyber_core::aim::MIRROR_FILE, if on { "on" } else { "off" });
+            println!("{}", if on { "on" } else { "off" });
+        }
+        arg => {
+            let on = toggle_value(arg, read_file(kyber_core::aim::STATE_FILE) == "on");
+            if on && !native_overlay_runtime() {
+                write_file(kyber_core::aim::STATE_FILE, "off");
+                eprintln!(
+                    "kyber: aim stays off. It needs the native overlay runtime \
+                     (kyber-ignite), which can draw the cursor turned at any angle; \
+                     this install uses the static XCursor theme, where the pointer \
+                     cannot rotate."
+                );
+                std::process::exit(3);
+            }
+            write_file(kyber_core::aim::STATE_FILE, if on { "on" } else { "off" });
+            println!("{}", if on { "on" } else { "off" });
+        }
+    }
 }
 
 /// One switch for the whole experience, like the sound modes:
@@ -646,6 +666,7 @@ fn main() {
         "sparks" => cmd_sparks(rest),
         "effects" => cmd_effects(rest),
         "trail" => cmd_trail(rest),
+        "aim" => cmd_aim(rest),
         "doctor" => cmd_doctor(),
         "random" => {
             if !rest.is_empty() {
@@ -672,6 +693,12 @@ fn main() {
             );
             println!("sound:   {}", format!("{:?}", cfg.sound).to_lowercase());
             println!("trail:   {}", if cfg.trail { "on" } else { "off" });
+            let aim = kyber_core::aim::AimSettings::load(&state_dir());
+            println!(
+                "aim:     {} (mirror {})",
+                if aim.enabled { "on" } else { "off" },
+                if aim.mirror { "on" } else { "off" }
+            );
             println!(
                 "look:    {} + {} ({} ms, every {} px)",
                 cfg.look.style, cfg.look.particles.as_str(), cfg.look.spark_life, cfg.look.spark_gap

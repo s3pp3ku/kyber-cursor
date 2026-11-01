@@ -11,8 +11,10 @@ use std::time::{Duration, Instant};
 
 use kyber_core::config::SmallRng;
 use kyber_core::overlay::{LIGHT_HI, LIGHT_LO};
+use kyber_core::render::AimCursor;
 use kyber_core::trail::{Bounds, Trail, TrailImage, TrailLook};
 
+use crate::aim::AimRuntime;
 use crate::art::{selected_art, Art, LayerKind};
 use crate::audio::{self, Player};
 use crate::cursor;
@@ -31,10 +33,18 @@ mod wl {
         zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
     };
     use sctk::registry::{ProvidesRegistryState, RegistryState};
+    use sctk::reexports::protocols::xdg::shell::client::xdg_positioner::{
+        Anchor as PopupAnchor, Gravity as PopupGravity,
+    };
     use sctk::shell::wlr_layer::{
         Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
         LayerSurfaceConfigure,
     };
+    use sctk::shell::xdg::popup::{Popup, PopupConfigure, PopupHandler};
+    use sctk::shell::xdg::window::{Window, WindowConfigure, WindowHandler};
+    use sctk::shell::xdg::{XdgPositioner, XdgShell};
+    use sctk::shm::slot::{Buffer as ShmBuffer, SlotPool};
+    use sctk::shm::{Shm, ShmHandler};
     use std::os::fd::AsRawFd;
     use wayland_client::protocol::{
         wl_buffer::WlBuffer, wl_output, wl_region::WlRegion, wl_surface::WlSurface,
@@ -62,6 +72,14 @@ mod wl {
         surface: Option<WlSurface>,
         layer_surface: Option<LayerSurface>,
         input_region: Option<WlRegion>,
+        /// For the popup overlay: xdg-shell, and the 1x1 transparent buffer
+        /// that maps the layer surface the popup hangs off.
+        xdg: Option<XdgShell>,
+        shm: Shm,
+        pool: Option<SlotPool>,
+        parent_buf: Option<ShmBuffer>,
+        popup: Option<Popup>,
+        popup_ready: bool,
         slots: Vec<DmaSlot>,
         slot_w: u32,
         slot_h: u32,
@@ -227,7 +245,51 @@ mod wl {
         }
     }
 
+    impl ShmHandler for App {
+        fn shm_state(&mut self) -> &mut Shm {
+            &mut self.shm
+        }
+    }
+
+    // The xdg-shell delegate also covers toplevels, which this overlay never
+    // creates.
+    impl WindowHandler for App {
+        fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {}
+        fn configure(
+            &mut self,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+            _: &Window,
+            _: WindowConfigure,
+            _: u32,
+        ) {
+        }
+    }
+
+    impl PopupHandler for App {
+        fn configure(
+            &mut self,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+            _: &Popup,
+            _: PopupConfigure,
+        ) {
+            // sctk acked it; the first buffer may be attached from here on.
+            self.popup_ready = true;
+        }
+        fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Popup) {
+            // The compositor dismissed it: nothing is on screen now, and
+            // `is_shown` says so, so the daemon maps a fresh one.
+            self.popup = None;
+            self.surface = None;
+            self.popup_ready = false;
+        }
+    }
+
     sctk::delegate_compositor!(App);
+    sctk::delegate_shm!(App);
+    sctk::delegate_xdg_shell!(App);
+    sctk::delegate_xdg_popup!(App);
     sctk::delegate_output!(App);
     sctk::delegate_layer!(App);
     sctk::delegate_registry!(App);
@@ -274,6 +336,12 @@ mod wl {
                 surface: None,
                 layer_surface: None,
                 input_region: None,
+                xdg: XdgShell::bind(&globals, &qh).ok(),
+                shm: Shm::bind(&globals, &qh).map_err(|e| format!("no wl_shm ({e:?})"))?,
+                pool: None,
+                parent_buf: None,
+                popup: None,
+                popup_ready: false,
                 slots: Vec::new(),
                 slot_w: 0,
                 slot_h: 0,
@@ -307,13 +375,30 @@ mod wl {
         }
 
         /// Map + size the overlay on `output`. Logical size, buffer scale up.
+        ///
+        /// `above_popups` draws it in an xdg-popup of the layer surface
+        /// instead of on the surface itself. Hyprland draws popups after every
+        /// layer, so a bar popup (Jarvis, a drawer) covers anything drawn
+        /// straight on an overlay layer, but not another popup. If the popup
+        /// cannot be made this falls back to the plain layer surface.
         pub fn show(
             &mut self,
             output: &wl_output::WlOutput,
             w: u32,
             h: u32,
             buf_scale: i32,
+            above_popups: bool,
         ) -> Result<(), String> {
+            if above_popups {
+                match self.show_in_popup(output, w, h, buf_scale) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        eprintln!(
+                            "kyber-ignite: popup overlay unavailable ({e}); using a plain layer surface"
+                        );
+                    }
+                }
+            }
             self.hide();
             let surface = self.app.compositor.create_surface(&self.qh);
             let layer = self.app.layer_shell.create_layer_surface(
@@ -355,7 +440,119 @@ mod wl {
             Ok(())
         }
 
+        /// The popup form of `show`: a 1x1 transparent layer surface (the
+        /// parent has to be mapped) and, hung off it, a popup the size of the
+        /// monitor at its origin. The cursor is drawn in the popup.
+        fn show_in_popup(
+            &mut self,
+            output: &wl_output::WlOutput,
+            w: u32,
+            h: u32,
+            buf_scale: i32,
+        ) -> Result<(), String> {
+            if self.app.xdg.is_none() {
+                return Err("no xdg-shell".into());
+            }
+            self.hide();
+            let parent = self.app.compositor.create_surface(&self.qh);
+            let layer = self.app.layer_shell.create_layer_surface(
+                &self.qh,
+                parent.clone(),
+                Layer::Overlay,
+                Some("cursor-ignite".to_string()),
+                Some(output),
+            );
+            layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            layer.set_size(1, 1);
+            // Empty input region on both surfaces: clicks always pass through.
+            let region = self
+                .app
+                .compositor
+                .wl_compositor()
+                .create_region(&self.qh, ());
+            parent.set_input_region(Some(&region));
+            parent.commit();
+            self.app.input_region = Some(region);
+            self.app.layer_surface = Some(layer);
+            self.queue
+                .roundtrip(&mut self.app)
+                .map_err(|e| format!("layer configure ({e})"))?;
+            // Map the parent with a transparent pixel.
+            if self.app.pool.is_none() {
+                self.app.pool = Some(
+                    SlotPool::new(4096, &self.app.shm).map_err(|e| format!("shm pool ({e})"))?,
+                );
+            }
+            let pool = self.app.pool.as_mut().expect("pool");
+            let (buffer, canvas) = pool
+                .create_buffer(1, 1, 4, wayland_client::protocol::wl_shm::Format::Argb8888)
+                .map_err(|e| format!("shm buffer ({e})"))?;
+            canvas.fill(0);
+            buffer.attach_to(&parent).map_err(|e| format!("attach ({e})"))?;
+            parent.damage_buffer(0, 0, 1, 1);
+            parent.commit();
+            self.app.parent_buf = Some(buffer);
+            // The popup, covering the monitor from its origin.
+            let positioner = {
+                let xdg = self.app.xdg.as_ref().ok_or("no xdg-shell")?;
+                let positioner = XdgPositioner::new(xdg).map_err(|e| format!("positioner ({e})"))?;
+                positioner.set_size(w as i32, h as i32);
+                positioner.set_anchor_rect(0, 0, 1, 1);
+                positioner.set_anchor(PopupAnchor::TopLeft);
+                positioner.set_gravity(PopupGravity::BottomRight);
+                positioner
+            };
+            let surface = self.app.compositor.create_surface(&self.qh);
+            let popup = {
+                let xdg = self.app.xdg.as_ref().ok_or("no xdg-shell")?;
+                Popup::from_surface(None, &positioner, &self.qh, surface.clone(), xdg)
+                    .map_err(|e| format!("popup ({e})"))?
+            };
+            self.app
+                .layer_surface
+                .as_ref()
+                .ok_or("layer surface gone")?
+                .get_popup(popup.xdg_popup());
+            surface.set_buffer_scale(buf_scale);
+            if let Some(region) = &self.app.input_region {
+                surface.set_input_region(Some(region));
+            }
+            surface.commit();
+            self.app.popup = Some(popup);
+            self.app.popup_ready = false;
+            for _ in 0..5 {
+                self.queue
+                    .roundtrip(&mut self.app)
+                    .map_err(|e| format!("popup configure ({e})"))?;
+                if self.app.popup_ready {
+                    break;
+                }
+            }
+            if !self.app.popup_ready {
+                return Err("popup was never configured".into());
+            }
+            self.app.surface = Some(surface);
+            self.app.surf_w = w;
+            self.app.surf_h = h;
+            self.app.slots.clear();
+            self.app.slot_w = 0;
+            self.app.slot_h = 0;
+            self.app.prev_dirty = None;
+            Ok(())
+        }
+
+        /// Is the overlay currently presented on some output?
+        pub fn is_shown(&self) -> bool {
+            self.app.surface.is_some()
+        }
+
         pub fn hide(&mut self) {
+            // The popup goes before its parent.
+            self.app.popup = None;
+            self.app.popup_ready = false;
+            self.app.parent_buf = None;
             self.app.surface = None;
             self.app.layer_surface = None;
             self.app.input_region = None;
@@ -510,6 +707,15 @@ pub struct FrameInput<'a> {
     pub trail: &'a [TrailPt],
     /// The drag-trail look (path style and sparks).
     pub look: TrailLook,
+    /// Aim mode: the baked cursor body to draw turned about the tip.
+    ///
+    /// `None` is the unchanged behaviour: only the glow is ever drawn, and the
+    /// compositor's own pointer stays on screen.
+    pub aim: Option<&'a AimCursor>,
+    /// Aim angle in degrees (0 = right, 90 = down).
+    pub aim_heading: f64,
+    /// Reflect the artwork across the pointer axis this frame.
+    pub aim_mirror: bool,
     pub surf_w: u32,
     pub surf_h: u32,
 }
@@ -536,6 +742,53 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
     let img_w = (lw as f64 * s as f64) as i32;
     let img_h = (lh as f64 * s as f64) as i32;
     let mut dirty = (ox as i32, oy as i32, img_w, img_h);
+
+    // Aim adds the whole cursor body, which is not the bloom: it has a tip
+    // (the hotspot) and a reach of its own, and it turns, so its footprint is
+    // the bounding circle of the turned glyph, not the glow's rectangle.
+    let aim_scale = fr
+        .aim
+        .map(|aim| fr.f * fr.bs / aim.ppu())
+        .unwrap_or(1.0);
+    let aim_cursor = (
+        (fr.pos_x - fr.mon_x) * fr.bs,
+        (fr.pos_y - fr.mon_y) * fr.bs,
+    );
+    if let Some(aim) = fr.aim {
+        // Round up: the damage must cover the anti-aliased edge too.
+        let reach = (aim.radius() * aim_scale).ceil() as i32 + 1;
+        let (cx, cy) = (aim_cursor.0.round() as i32, aim_cursor.1.round() as i32);
+        dirty = union_rect(dirty, (cx - reach, cy - reach, 2 * reach, 2 * reach));
+    }
+
+    // With aim on, the glow turns with the blade: same transform as the body,
+    // about the hotspot. Its footprint is the circle through the bitmap's
+    // farthest corner, so the damage rect covers every heading.
+    let glow_tip = (
+        (meta.hotspot[0] - meta.origin[0]) * ppu,
+        (meta.hotspot[1] - meta.origin[1]) * ppu,
+    );
+    let glow_turn = fr.aim.map(|_| {
+        let scale = s as f64;
+        let m = kyber_core::aim::glyph_transform(
+            fr.aim_heading,
+            fr.aim_mirror,
+            (glow_tip.0 * scale, glow_tip.1 * scale),
+            aim_cursor,
+        )
+        .then(kyber_core::aim::Mat::scale(scale, scale));
+        let [a, b, c, d, e, f] = m.row();
+        tiny_skia::Transform::from_row(a, b, c, d, e, f)
+    });
+    if glow_turn.is_some() {
+        let far = [(0.0, 0.0), (lw as f64, 0.0), (0.0, lh as f64), (lw as f64, lh as f64)]
+            .iter()
+            .map(|c| (c.0 - glow_tip.0).hypot(c.1 - glow_tip.1))
+            .fold(0.0, f64::max);
+        let reach = (far * s as f64).ceil() as i32 + 1;
+        let (cx, cy) = (aim_cursor.0.round() as i32, aim_cursor.1.round() as i32);
+        dirty = union_rect(dirty, (cx - reach, cy - reach, 2 * reach, 2 * reach));
+    }
 
     // Drag trail, under the glow. One `Trail` lives across frames so its
     // sparks keep flying between them; only points newer than the last frame
@@ -603,14 +856,20 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
                     // Put translation directly in the matrix so the artwork
                     // is scaled around its own origin, then placed at the
                     // already-device-scaled cursor position.
-                    let transform =
-                        tiny_skia::Transform::from_row(s, 0.0, 0.0, s, ox.round(), oy.round());
+                    let transform = glow_turn.unwrap_or_else(|| {
+                        tiny_skia::Transform::from_row(s, 0.0, 0.0, s, ox.round(), oy.round())
+                    });
                     px.draw_pixmap(
                         0,
                         0,
                         src.as_ref(),
                         &tiny_skia::PixmapPaint {
                             opacity,
+                            quality: if glow_turn.is_some() {
+                                tiny_skia::FilterQuality::Bilinear
+                            } else {
+                                tiny_skia::FilterQuality::Nearest
+                            },
                             ..Default::default()
                         },
                         transform,
@@ -619,6 +878,13 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
                 }
             }
         }
+    }
+
+    // Aim: the whole cursor body, tip on the pointer, over the glow. It is
+    // drawn whether or not the blade is lit, because while aim is on this is
+    // the only pointer the session has.
+    if let Some(aim) = fr.aim {
+        aim.draw(&mut px, fr.aim_heading, fr.aim_mirror, aim_cursor, aim_scale);
     }
 
     // Keep tiny-skia's premultiplied pixels. Wayland ARGB8888 requires
@@ -686,6 +952,9 @@ struct Placement {
     bs: i32,
     surf_w: u32,
     surf_h: u32,
+    /// The monitor list this placement came from: moving the pointer to
+    /// another screen can then be noticed without an IPC round trip a frame.
+    mons: Vec<cursor::Monitor>,
 }
 
 fn place() -> Option<(Vec<cursor::Monitor>, Placement, (f64, f64))> {
@@ -696,7 +965,7 @@ fn place() -> Option<(Vec<cursor::Monitor>, Placement, (f64, f64))> {
     let f = cursor::units_to_logical(&kyber_core::geometry::SIZES, m.scale);
     let bs = m.scale.ceil() as i32;
     Some((
-        mons,
+        mons.clone(),
         Placement {
             mon: idx,
             mon_x: m.x,
@@ -706,6 +975,7 @@ fn place() -> Option<(Vec<cursor::Monitor>, Placement, (f64, f64))> {
             bs,
             surf_w: m.w.round() as u32,
             surf_h: m.h.round() as u32,
+            mons,
         },
         pos,
     ))
@@ -753,39 +1023,85 @@ pub fn run_daemon() -> i32 {
     let mut last_rescan = Instant::now();
     let mut last_pos = (0.0, 0.0);
 
+    // Aim borrows the compositor's pointer. The guard restores it on every
+    // way out of this process that can be caught, so install it before any
+    // path that can return.
+    let _pointer_guard = crate::aim::PointerGuard::install();
+    let mut aim = AimRuntime::new();
+    let mut aim_polled = Instant::now() - Duration::from_secs(1);
+    let mut aim_warned = false;
+    let mut art_checked = Instant::now();
+    let mut last_drawn: Option<((f64, f64), f64)>;
+    // Another layer opened: when the overlay should be mapped again so it is
+    // back above it. Debounced, since a menu opens several surfaces at once.
+    let layers = cursor::watch_layers();
+    let mut remap_due: Option<Instant> = None;
+
     loop {
-        // Idle: sleep until input (rescan every 5 s, like the Python).
-        match rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(ev) => handle_button(ev, &mut engine, &player, now_s()),
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return 0,
+        // Aim switches are two small files: read them a few times a second so
+        // `kyber aim on` in a terminal takes effect without a restart.
+        if aim_polled.elapsed() >= Duration::from_millis(250) {
+            aim_polled = Instant::now();
+            aim.reload();
         }
-        if last_rescan.elapsed() > Duration::from_secs(5) {
-            watch_new(&mut watched, &tx);
-            last_rescan = Instant::now();
-        }
-        // Service any press that arrived while idle.
-        pump_press(
-            &mut engine,
-            &player,
-            &mut art,
-            &mut overlay,
-            &mut placement,
-            &mut last_pos,
-        );
-        if !engine.is_live() && engine.trail.is_empty() {
+        // Idle: sleep until input (rescan every 5 s, like the Python). Aim on
+        // means the cursor has to be redrawn even with no input, so the loop
+        // below keeps running instead.
+        if !aim.settings.enabled && !engine.is_live() && engine.trail.is_empty() {
+            match rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(ev) => handle_button(ev, &mut engine, &player, now_s()),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return 0,
+            }
+            if last_rescan.elapsed() > Duration::from_secs(5) {
+                watch_new(&mut watched, &tx);
+                last_rescan = Instant::now();
+            }
+            // Service any press that arrived while idle.
+            pump_press(
+                &mut engine,
+                &player,
+                &mut art,
+                &mut overlay,
+                &mut placement,
+                &mut last_pos,
+            );
             continue;
         }
         // Active frame loop.
         let mut last_draw = Instant::now() - Duration::from_millis(100);
+        last_drawn = None;
         loop {
             // Measure the interval from frame start, not completion: render
             // and upload must fit inside the interval rather than extend it.
             let frame_interval = Duration::from_millis(16);
             let remaining = frame_interval.saturating_sub(last_draw.elapsed());
             if !remaining.is_zero() {
-                overlay.poll(remaining.min(Duration::from_millis(2)));
+                // One wait for the whole remainder, not 2 ms slices: the same
+                // 60 fps with a fraction of the wakeups while aim holds the
+                // loop open with a still pointer.
+                overlay.poll(remaining);
                 continue;
+            }
+            if aim_polled.elapsed() >= Duration::from_millis(250) {
+                aim_polled = Instant::now();
+                aim.reload();
+            }
+            // `kyber off` and recolors have to reach aim too: the art cache
+            // is re-checked once a second, not on every frame.
+            if aim.settings.enabled && art_checked.elapsed() >= Duration::from_secs(1) {
+                art_checked = Instant::now();
+                match selected_art() {
+                    Some(fresh) => {
+                        if art.as_ref().is_none_or(|old| old.key != fresh.key) {
+                            art = Some(fresh);
+                            aim_warned = false;
+                            // Redraw: the colors may look different now.
+                            last_drawn = None;
+                        }
+                    }
+                    None => art = None,
+                }
             }
             last_draw = Instant::now();
             while let Ok(ev) = rx.try_recv() {
@@ -809,44 +1125,163 @@ pub fn run_daemon() -> i32 {
                 watch_new(&mut watched, &tx);
                 last_rescan = Instant::now();
             }
-            let cursor = cursor::cursor_pos().ok();
-            if let Some(p) = cursor {
+            if let Ok(p) = cursor::cursor_pos() {
                 last_pos = p;
             }
-            if !engine.tick(now_s(), Some(last_pos)) {
+            let now = now_s();
+            let live = engine.tick(now, Some(last_pos));
+            let aimed = aim.settings.enabled
+                && arm_aim(&mut aim, &mut art, &mut overlay, &mut placement, last_pos, &mut aim_warned);
+            while layers.try_recv().is_ok() {
+                remap_due = Some(Instant::now() + LAYER_SETTLE);
+            }
+            if remap_due.is_some_and(|due| Instant::now() >= due) {
+                remap_due = None;
+                if aimed && remap_overlay(&mut overlay, placement.as_ref()) {
+                    last_drawn = None;
+                }
+            }
+            if !aimed {
+                // Nothing of ours is on screen at the pointer: hand it back.
+                aim.release_pointer();
+            } else {
+                aim.keep_pointer_hidden();
+            }
+            if !live && !aimed {
                 break;
             }
-            if let (Some(a), Some(pl)) = (art.as_ref(), placement.as_ref()) {
-                let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
-                let (hum_haze, hum_beam) = engine.hum(flicker);
-                let frame = render_frame(
-                    &FrameInput {
-                        art: a,
-                        e: engine.ease(),
-                        hum_haze,
-                        hum_beam,
-                        light: engine.light,
-                        f: pl.f,
-                        bs: pl.bs as f64,
-                        mon_x: pl.mon_x,
-                        mon_y: pl.mon_y,
-                        pos_x: last_pos.0,
-                        pos_y: last_pos.1,
-                        trail: &trail_snapshot(&engine),
-                        look: engine.trail_look,
-                        surf_w: pl.surf_w,
-                        surf_h: pl.surf_h,
-                    },
-                    engine.t,
-                );
-                if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
-                    eprintln!("kyber-ignite: draw failed: {e}");
+            if aimed {
+                aim.tick(last_pos, now);
+            }
+            // A still pointer over a settled heading draws nothing new: sixty
+            // checks a second, but only a frame when the picture can change.
+            let changed = live
+                || aimed
+                    && last_drawn.is_none_or(|(pos, heading)| {
+                        pos != last_pos || (heading - aim.heading()).abs() > 0.01
+                    });
+            if changed {
+                if let (Some(a), Some(pl)) = (art.as_ref(), placement.as_ref()) {
+                    let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
+                    let (hum_haze, hum_beam) = engine.hum(flicker);
+                    let frame = render_frame(
+                        &FrameInput {
+                            art: a,
+                            e: engine.ease(),
+                            hum_haze,
+                            hum_beam,
+                            light: engine.light,
+                            f: pl.f,
+                            bs: pl.bs as f64,
+                            mon_x: pl.mon_x,
+                            mon_y: pl.mon_y,
+                            pos_x: last_pos.0,
+                            pos_y: last_pos.1,
+                            trail: &trail_snapshot(&engine),
+                            look: engine.trail_look,
+                            aim: if aimed { aim.cursor() } else { None },
+                            aim_heading: aim.heading(),
+                            aim_mirror: aim.mirror(),
+                            surf_w: pl.surf_w,
+                            surf_h: pl.surf_h,
+                        },
+                        engine.t,
+                    );
+                    if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
+                        eprintln!("kyber-ignite: draw failed: {e}");
+                    }
+                    last_drawn = Some((last_pos, aim.heading()));
                 }
             }
             overlay.poll(Duration::ZERO);
         }
+        aim.release_pointer();
         overlay.hide();
+        // Aim on but nothing to draw (Kyber off, no overlay art, no compositor
+        // answer): retry a few times a second instead of spinning.
+        if aim.settings.enabled {
+            overlay.poll(Duration::from_millis(250));
+        }
     }
+}
+
+/// How long after the last foreign layer opens before the overlay climbs back.
+const LAYER_SETTLE: Duration = Duration::from_millis(80);
+
+/// Map the overlay again, which puts it on top of its level. `show` replaces
+/// the surface in one go, so the pointer is missing for one frame at most.
+fn remap_overlay(overlay: &mut wl::Overlay, placement: Option<&Placement>) -> bool {
+    let Some(pl) = placement else {
+        return false;
+    };
+    let Some(out) = overlay.output_by_name(&pl.mons[pl.mon].name) else {
+        return false;
+    };
+    overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, true).is_ok()
+}
+
+/// Keep aim's replacement cursor on screen: overlay presented on the cursor's
+/// monitor, body baked, compositor pointer hidden.
+///
+/// Returns whether aim can draw this frame. The pointer is hidden only after
+/// all of that succeeded — a hidden pointer with no replacement would lose the
+/// user's cursor, which is much worse than losing the effect.
+fn arm_aim(
+    aim: &mut AimRuntime,
+    art: &mut Option<Art>,
+    overlay: &mut wl::Overlay,
+    placement: &mut Option<Placement>,
+    pos: (f64, f64),
+    warned: &mut bool,
+) -> bool {
+    if art.is_none() {
+        match selected_art() {
+            Some(fresh) => *art = Some(fresh),
+            None => {
+                if !*warned {
+                    eprintln!(
+                        "kyber-ignite: aim is on but there is no overlay art, so the \
+                         pointer stays visible. Run: kyber apply"
+                    );
+                    *warned = true;
+                }
+                return false;
+            }
+        }
+    }
+    let stale = match placement.as_ref() {
+        None => true,
+        Some(p) => {
+            !overlay.is_shown() || cursor::monitor_at(&p.mons, pos.0, pos.1) != Some(p.mon)
+        }
+    };
+    if stale {
+        let Some((mons, mut pl, _)) = place() else {
+            return false;
+        };
+        let name = mons[pl.mon].name.clone();
+        let Some(out) = overlay.output_by_name(&name) else {
+            return false;
+        };
+        pl.mons = mons;
+        if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, true).is_err() {
+            return false;
+        }
+        *placement = Some(pl);
+    }
+    let Some(pl) = placement.as_ref() else {
+        return false;
+    };
+    // Bake at twice the size the compositor would show: the turn resamples the
+    // body, so a sharper source keeps the turned blade as crisp as the XCursor.
+    let device_ppu = pl.f * pl.bs as f64;
+    let baked = ((kyber_core::geometry::VIEW[2] * device_ppu) * 2.0)
+        .round()
+        .clamp(32.0, 512.0) as u32;
+    if !aim.ensure_cursor(baked) {
+        return false;
+    }
+    aim.hide_pointer()
 }
 
 /// Button event outside/between frames: transitions + sounds only.
@@ -904,13 +1339,21 @@ fn pump_press(
     pl.light = luma
         .map(|l| ((l as f64 - LIGHT_LO) / (LIGHT_HI - LIGHT_LO)).clamp(0.0, 1.0) as f32)
         .unwrap_or(0.0);
-    let m = &mons[pl.mon];
-    // (Re)show when the monitor or size changed.
-    let wlname = m.name.clone();
-    let out = overlay.output_by_name(&wlname);
-    let Some(out) = out else { return };
-    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs).is_err() {
-        return;
+    // Aim may already have the overlay up on this exact monitor: re-creating
+    // the surface would flash, so only (re)show when something changed.
+    let already = overlay.is_shown()
+        && placement.as_ref().is_some_and(|p| {
+            p.mon == pl.mon && p.surf_w == pl.surf_w && p.surf_h == pl.surf_h && p.bs == pl.bs
+        });
+    let wlname = mons[pl.mon].name.clone();
+    pl.mons = mons;
+    if !already {
+        let Some(out) = overlay.output_by_name(&wlname) else {
+            return;
+        };
+        if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_err() {
+            return;
+        }
     }
     *last_pos = pos;
     engine.begin_visual(now_s(), trail_enabled(), pl.light);
@@ -963,7 +1406,7 @@ pub fn run_demo(seconds: f64) -> i32 {
         eprintln!("kyber-ignite: no output");
         return 1;
     };
-    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs).is_err() {
+    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_err() {
         return 1;
     }
     let mut rng = SmallRng::seed(7);
@@ -1017,6 +1460,9 @@ pub fn run_demo(seconds: f64) -> i32 {
                         pos_y: last_pos.1,
                         trail: &trail_snapshot(&engine),
                         look: engine.trail_look,
+                        aim: None,
+                        aim_heading: 0.0,
+                        aim_mirror: false,
                         surf_w: pl.surf_w,
                         surf_h: pl.surf_h,
                     },
@@ -1046,6 +1492,9 @@ pub fn run_demo(seconds: f64) -> i32 {
             pos_y: last_pos.1,
             trail: &[],
             look: engine.trail_look,
+            aim: None,
+            aim_heading: 0.0,
+            aim_mirror: false,
             surf_w: pl.surf_w,
             surf_h: pl.surf_h,
         }, engine.t);
@@ -1102,6 +1551,59 @@ mod render_tests {
     }
 
     #[test]
+    fn aim_frame_draws_the_whole_cursor_inside_a_small_damage_rect() {
+        // No glow layers at all: whatever is drawn here is the aim body.
+        let art = Art {
+            meta: kyber_core::overlay::OverlayMeta::new("#0009f5"),
+            dark: Vec::new(),
+            light: Vec::new(),
+            key: (std::path::PathBuf::new(), std::time::UNIX_EPOCH),
+        };
+        let body = kyber_core::render::AimCursor::build("#fcef0c", 96).unwrap();
+        let input = FrameInput {
+            art: &art,
+            e: 0.0,
+            hum_haze: 0.0,
+            hum_beam: 0.0,
+            light: 0.0,
+            f: 0.8,
+            bs: 1.0,
+            mon_x: 0.0,
+            mon_y: 0.0,
+            pos_x: 400.0,
+            pos_y: 300.0,
+            trail: &[],
+            look: TrailLook::default(),
+            aim: Some(&body),
+            aim_heading: 0.0,
+            aim_mirror: false,
+            surf_w: 800,
+            surf_h: 600,
+        };
+        let frame = render_frame(&input, 0.0);
+        let alpha = |x: u32, y: u32| frame.pixels[((y * frame.w + x) * 4 + 3) as usize];
+        // The tip is a hairline point, so look around the hotspot: something
+        // of the spearhead has to be there.
+        let near_tip = (396..=404)
+            .flat_map(|x| (296..=304).map(move |y| (x, y)))
+            .any(|(x, y)| alpha(x, y) > 0);
+        assert!(near_tip, "nothing drawn at the pointer");
+        // The head and then the hilt trail behind it (heading 0 = travelling
+        // right), so the blade is drawn pointing where the pointer came from.
+        assert!(alpha(390, 300) > 0, "the spearhead is missing");
+        let hilt = (297..=303).any(|y| alpha(372, y) > 0);
+        assert!(hilt, "the hilt is missing");
+        // Nothing anywhere else, so the empty overlay stays click-through and
+        // the compositor has nothing to blend.
+        assert_eq!(alpha(20, 20), 0);
+        assert_eq!(alpha(780, 580), 0);
+        // Damage covers the cursor footprint, not the screen.
+        let (_, _, w, h) = frame.dirty;
+        assert!(w > 0 && h > 0, "{:?}", frame.dirty);
+        assert!(w <= 220 && h <= 220, "full-screen damage: {:?}", frame.dirty);
+    }
+
+    #[test]
     #[ignore = "manual release-mode renderer timing"]
     fn held_frame_timing() {
         let layers = || {
@@ -1137,6 +1639,9 @@ mod render_tests {
             pos_y: 300.0,
             trail: &[],
             look: TrailLook::default(),
+            aim: None,
+            aim_heading: 0.0,
+            aim_mirror: false,
             surf_w: 1200,
             surf_h: 750,
         };

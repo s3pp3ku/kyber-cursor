@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src data:; connect-src 'none'">
+<title>Kyber · Sound comparison</title>
+<style>
+  :root { color-scheme: dark; font: 16px/1.6 system-ui, sans-serif; background: #101617; color: #e6edef }
+  body { max-width: 1040px; margin: auto; padding: 40px 24px 80px }
+  h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.15; margin: 8px 0 18px }
+  h2 { font-size: 23px; margin: 38px 0 12px }
+  p { max-width: 74ch; color: #b8c8ca }
+  .eyebrow { color: #83ebce; letter-spacing: .13em; font-size: 12px; text-transform: uppercase }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 0; position: sticky; top: 0; background: #101617f5; z-index: 1 }
+  button, select { font: inherit; color: inherit; border: 1px solid #466361; background: #203230; border-radius: 8px; padding: 8px 14px; cursor: pointer }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #83ebce; outline-offset: 3px }
+  input { accent-color: #83ebce; vertical-align: middle; max-width: 34vw }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px }
+  article { border: 1px solid #33494a; border-radius: 14px; padding: 20px; background: #172022 }
+  article h3 { margin: 0; font-size: 18px }
+  article p { font-size: 14px; min-height: 90px }
+  audio { width: 100%; height: 40px; margin-top: 10px }
+  .label { font-size: 13px; color: #83ebce; margin: 0 0 6px }
+  .row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 16px; align-items: center; margin: 14px 0 }
+  .row audio { margin: 0 }
+  .notice { border-left: 3px solid #83ebce; padding-left: 16px; margin: 24px 0 }
+  .status { min-height: 26px; color: #83ebce }
+  @media(max-width: 650px) { .row { grid-template-columns: 1fr } article p { min-height: 0 } .controls { font-size: 14px } }
+</style>
+<main>
+  <div class="eyebrow">Kyber / listening room</div>
+  <h1>Find the sound you want to keep.</h1>
+  <p>Listen on the same speakers or headphones, at the same volume. Then copy this page to Windows, Mac or Linux and compare again. Everything plays offline.</p>
+  <div class="controls">
+    <button id="stop" type="button">Stop sound</button>
+    <label for="volume">Volume <input id="volume" type="range" min="0" max="100" value="56"> <output id="level">56%</output></label>
+  </div>
+  <div id="status" class="status" role="status" aria-live="polite">Ready. Press a play button to listen.</div>
+  <h2>1. Compare a full hold and release</h2>
+  <p>Each sequence holds for five seconds, then releases. The power-up begins after 0.3 seconds. All three use the same volume and timing.</p>
+  <div class="grid">
+    <article><div class="label">A · Original behavior</div><h3>Python original</h3>
+      <p>The original generated power-up and power-down. Python's listener adds no continuous hum, so the middle becomes quiet.</p>
+      <audio controls preload="none" data-clip="listening/python-cycle.wav" aria-label="A: Python original hold and release"></audio></article>
+    <article><div class="label">B · Current Rust synthesis</div><h3>Rust with added hum</h3>
+      <p>Rust's generated clips and its current held hum, including detuning and pitch drift. A representative fixed hum variation.</p>
+      <audio controls preload="none" data-clip="listening/rust-cycle.wav" aria-label="B: Current Rust synthesis hold and release"></audio></article>
+    <article><div class="label">C · An option to audition</div><h3>Python clips + simple hum</h3>
+      <p>The original Python clips with a held tone made from Python's own hum formula. This combination is a proposal you can compare.</p>
+      <audio controls preload="none" data-clip="listening/python-with-hum.wav" aria-label="C: Python clips with simple held hum"></audio></article>
+  </div>
+  <div class="notice"><p>This compares generated sounds. Your desktop also has personal sound files, so the live cursor can sound different. Clashes and swipes can be heard separately below.</p></div>
+  <h2>2. Compare the individual clips</h2>
+  <label for="variant">Variation <select id="variant"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+  <div id="clips"></div>
+  <h2>3. Hear the hum and extra effects</h2>
+  <div class="grid">
+    <article><h3>Python hum ingredient</h3><p>The harmonic tone used inside Python's generated clips, isolated at 86 Hz. No added detuned layer or pitch drift.</p>
+      <audio controls preload="none" data-clip="listening/python-hum-ingredient.wav" aria-label="Python hum ingredient"></audio></article>
+    <article><h3>Current Rust hum</h3><p>The current held oscillator at 86 Hz, isolated at its source level. Listen for the difference in texture and loudness.</p>
+      <audio controls preload="none" data-clip="rust-current/hum-86.wav" aria-label="Current Rust held hum"></audio></article>
+    <article><h3>Rust swipe</h3><p>The current generated slash for a fast held movement. Python's original listener does not generate this extra effect.</p>
+      <audio controls preload="none" data-clip="rust-current/swipe-2.wav" aria-label="Current Rust swipe"></audio></article>
+  </div>
+  <p>Choose the power-up, power-down, clash and held tone you prefer. The original generated WAV pack is supplied separately as <strong>kyber-python-original-sounds.zip</strong>; the same files can be used on each system. Mac cursor integration still needs to be built.</p>
+</main>
+<script>
+const audioData = /* AUDIO_DATA */{};
+const status = document.getElementById('status');
+const volume = document.getElementById('volume');
+function stopAll(except) {
+  document.querySelectorAll('audio').forEach(audio => {
+    if (audio !== except) { audio.pause(); audio.currentTime = 0; }
+  });
+}
+function wire(audio) {
+  audio.src = audioData[audio.dataset.clip];
+  audio.volume = (Number(volume.value) / 100) ** 3;
+  audio.addEventListener('play', () => {
+    stopAll(audio);
+    status.textContent = 'Playing: ' + audio.getAttribute('aria-label');
+  });
+  audio.addEventListener('ended', () => { status.textContent = 'Finished. Compare the next sound.'; });
+  audio.addEventListener('error', () => { status.textContent = 'Playback failed. Try opening this file in another browser, or play the WAV files.'; });
+}
+function renderClips() {
+  stopAll();
+  const variation = Number(document.getElementById('variant').value);
+  const clips = document.getElementById('clips');
+  clips.replaceChildren();
+  const heading = document.createElement('div');
+  heading.className = 'row';
+  ['Sound', 'Python original', 'Current Rust synthesis'].forEach(label => {
+    const text = document.createElement('strong'); text.textContent = label; heading.append(text);
+  });
+  clips.append(heading);
+  ['ignite', 'off', 'clash', 'double clash'].forEach(kind => {
+    const name = kind === 'double clash' ? `clash/2-clash-${Math.min(variation, 2)}.wav`
+      : `${kind}/${kind}-${kind === 'off' ? Math.min(variation, 2) : variation}.wav`;
+    const row = document.createElement('div'); row.className = 'row';
+    const label = document.createElement('span'); label.textContent = kind; row.append(label);
+    ['python-original', 'rust-current'].forEach(pack => {
+      const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'none';
+      audio.dataset.clip = `${pack}/${name}`;
+      audio.setAttribute('aria-label', `${pack === 'python-original' ? 'Python' : 'Rust'} ${kind} variation ${Math.min(variation, kind === 'off' || kind === 'double clash' ? 2 : 3)}`);
+      wire(audio); row.append(audio);
+    });
+    clips.append(row);
+  });
+}
+document.querySelectorAll('audio[data-clip]').forEach(wire);
+document.getElementById('variant').addEventListener('change', renderClips);
+document.getElementById('stop').addEventListener('click', () => { stopAll(); status.textContent = 'Stopped.'; });
+volume.addEventListener('input', () => {
+  document.getElementById('level').textContent = volume.value + '%';
+  document.querySelectorAll('audio').forEach(audio => { audio.volume = (Number(volume.value) / 100) ** 3; });
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopAll(); });
+window.addEventListener('pagehide', () => stopAll());
+renderClips();
+</script>
+</html>

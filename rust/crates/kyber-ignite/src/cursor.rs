@@ -46,6 +46,43 @@ fn hypr(request: &str) -> std::io::Result<String> {
     String::from_utf8(out).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+/// Namespaces whose opening must not make Kyber re-map: its own, and Plume's
+/// (which re-maps itself on every layer but its own, so each would otherwise
+/// keep bumping the other to the top forever).
+const IGNORED_LAYERS: [&str; 2] = ["cursor-ignite", "plume"];
+
+/// The namespace from an `openlayer>>NAME` event line, if it is one that
+/// should make the overlay climb back above it.
+pub fn raised_layer(line: &str) -> Option<&str> {
+    let name = line.trim_end().strip_prefix("openlayer>>")?;
+    (!name.is_empty() && !IGNORED_LAYERS.contains(&name)).then_some(name)
+}
+
+/// Tell the daemon, over the returned channel, whenever some other layer
+/// surface opens. Layer surfaces on the same level stack in map order, so
+/// anything mapped after Kyber's overlay (a menu, a panel) is drawn above the
+/// pointer until the overlay is mapped again.
+///
+/// Reconnects if Hyprland's event socket goes away.
+pub fn watch_layers() -> std::sync::mpsc::Receiver<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let path = socket_path().with_file_name(".socket2.sock");
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        loop {
+            if let Ok(stream) = UnixStream::connect(&path) {
+                for line in std::io::BufReader::new(stream).lines().map_while(Result::ok) {
+                    if raised_layer(&line).is_some() && tx.send(()).is_err() {
+                        return;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    });
+    rx
+}
+
 pub fn cursor_pos() -> std::io::Result<(f64, f64)> {
     let reply = hypr("cursorpos")?;
     let (x, y) = reply
@@ -94,6 +131,36 @@ pub fn monitor_at(monitors: &[Monitor], x: f64, y: f64) -> Option<usize> {
         .position(|m| m.x <= x && x < m.x + m.w && m.y <= y && y < m.y + m.h)
 }
 
+/// Is the compositor's own pointer currently hidden? `None` if Hyprland did
+/// not answer or the reply was not understood.
+pub fn pointer_hidden() -> Option<bool> {
+    let reply = hypr("getoption cursor:invisible").ok()?;
+    parse_hidden(&reply)
+}
+
+fn parse_hidden(reply: &str) -> Option<bool> {
+    let value = reply.lines().next()?.strip_prefix("bool:")?.trim();
+    match value {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// Hide or restore the compositor's own pointer.
+///
+/// Hyprland 0.56 evaluates Lua here (`hl.*`), which is the supported way to
+/// flip `cursor:invisible` at runtime. Returns whether Hyprland accepted it;
+/// callers keep the pointer visible when it did not, because a hidden pointer
+/// with nothing drawn in its place loses the user's cursor.
+pub fn set_invisible(hidden: bool) -> bool {
+    let code = format!("hl.config({{ cursor = {{ invisible = {hidden} }} }})");
+    std::process::Command::new("hyprctl")
+        .args(["eval", &code])
+        .output()
+        .is_ok_and(|out| out.status.success())
+}
+
 pub fn cursor_size() -> u32 {
     for var in ["HYPRCURSOR_SIZE", "XCURSOR_SIZE"] {
         if let Ok(v) = std::env::var(var) {
@@ -128,6 +195,24 @@ pub fn units_to_logical(sizes: &[u32], monitor_scale: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reads_the_pointer_option_reply() {
+        assert_eq!(parse_hidden("bool: true\nset: true\n"), Some(true));
+        assert_eq!(parse_hidden("bool: false\nset: true\n"), Some(false));
+        assert_eq!(parse_hidden("no such option"), None);
+        assert_eq!(parse_hidden(""), None);
+    }
+
+    #[test]
+    fn only_foreign_layers_raise_the_overlay() {
+        assert_eq!(raised_layer("openlayer>>omarchy-menu\n"), Some("omarchy-menu"));
+        assert_eq!(raised_layer("openlayer>>cursor-ignite"), None);
+        assert_eq!(raised_layer("openlayer>>plume"), None);
+        assert_eq!(raised_layer("openlayer>>"), None);
+        assert_eq!(raised_layer("closelayer>>omarchy-menu"), None);
+        assert_eq!(raised_layer("workspace>>2"), None);
+    }
+
     use super::*;
 
     #[test]

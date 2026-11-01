@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "purpose": "Candidate sound generation only; the current recorded pack remains selected until new listening choices are made.",
+  "model_id": "eleven_text_to_sound_v2",
+  "settings_note": "Durations and prompt influence are suggested starting points, not ElevenLabs requirements or guaranteed results.",
+  "start_with": "hum",
+  "prompts": [
+    {
+      "role": "hum",
+      "filename": "eleven-hum-01",
+      "duration_seconds": 10,
+      "loop": true,
+      "prompt_influence": 0.50,
+      "text": "Steady lightsaber hum, smooth and continuous: a firm low electrical buzz with a hollow midrange whine and fine electric crackle riding on top. No pulsing, no fade in or fade out at the edges, seamless loop, close and dry, no music.",
+      "detailed_text": "Seamless loop of a lit handheld lightsaber held still. A firm electrical buzz carries the pitch, with a hollow nasal whine above it and fine irregular crackle across the top. The character is electric and slightly metallic, not a subwoofer rumble and not a mains hum. Level stays steady for the whole ten seconds, with no fade in, no fade out and no rhythmic pulsing at the loop point. Close and dry, almost no room. Sustained hum only: no activation, shutdown, impacts, music or voices.",
+      "revision_note": "Rewritten 2026-10-20. The earlier 'deep / heavy 60 Hz mains hum' wording produced a 1-second sub-drone near 48-58 Hz with almost nothing above 1 kHz, which had to be rebuilt from scratch to sound like a blade. Keep the body in the electrical midrange and say 'lightsaber' plainly."
+    },
+    {
+      "role": "ignite",
+      "filename": "eleven-ignite-01",
+      "duration_seconds": 1.3,
+      "loop": false,
+      "prompt_influence": 0.65,
+      "text": "One lightsaber powering on. A low electrical thrum rises in pitch and grows into a full layered buzzing hum. Clear upward activation with fine crackle. No collision, explosion, speech or music.",
+      "detailed_text": "One handheld sci-fi energy blade powering on. A low electrical thrum rises continuously in pitch, brightness and energy, opening into a full layered buzzing hum. Deep motor body, rough midrange current and fine electrical crackle grow together; briefly sustain the final energized tone. One clear upward activation, close and dry. No collision, explosive hit, metallic clang, music or voices."
+    },
+    {
+      "role": "off",
+      "filename": "eleven-off-01",
+      "duration_seconds": 1.5,
+      "loop": false,
+      "prompt_influence": 0.60,
+      "text": "One lightsaber shutting down: it starts already at full hum, then pitch and brightness fall steadily as the blade dies, ending in silence. Deep electrical body with fine crackle. No fade in, no impact, no music.",
+      "detailed_text": "One lit lightsaber being switched off. The sound begins at its full running hum with no fade in, holds for a moment, then the pitch and brightness fall smoothly together as the energy drains away, and it stops dead in silence. Same electric character as the running hum: buzz, hollow midrange whine, fine crackle. One clear downward motion, close and dry. No impact, no boom, no musical notes, no voices.",
+      "revision_note": "Added 2026-10-20. The owner's original set had no shutdown prompt, so power-down had to be faked by pitch-shifting the ignition. 'Starts already at full hum' and 'no fade in' are the two phrases that matter: without them the generator produces a fade-in and it cannot be joined to the hum."
+    },
+    {
+      "role": "swipe",
+      "filename": "eleven-swipe-01",
+      "duration_seconds": 0.6,
+      "loop": false,
+      "prompt_influence": 0.55,
+      "text": "One energized blade swiping past: low electrical growl, dense buzzing body, brief passing pitch bend and fine electric sizzle. Little wind noise, short decay. No impact, speech or music.",
+      "detailed_text": "One quick pass of an energized sci-fi blade through space. A dense electrical buzz and low motor growl sweep past with a brief Doppler pitch bend, a narrow electric sizzle and a compact decay. Same deep electrical character as the stationary blade hum, with little wind noise. Close, dry, isolated movement sound; no hit, ignition, speech or music."
+    },
+    {
+      "role": "clash",
+      "filename": "eleven-clash-01",
+      "duration_seconds": 0.6,
+      "loop": false,
+      "prompt_influence": 0.55,
+      "text": "One clash of energized blades: a sharp electrical crack, deep buzzing body and short sizzling decay. One compact impact with little echo. No repeated hits, explosion, speech or music.",
+      "detailed_text": "One collision between two energized sci-fi blades. A single sharp electrical crack with a dense low-mid body, a short rough buzzing sizzle and a very brief resonant decay. Compact, punchy and dry, with the same electrical character as the sustained blade hum. One impact only; no repeated strikes, debris, explosion, long echo, music or voices."
+    }
+  ],
+  "sources": [
+    "https://elevenlabs.io/docs/eleven-creative/playground/sound-effects",
+    "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert",
+    "https://elevenlabs.io/docs/eleven-api/resources/agent-tooling"
+  ],
+  "revision_note": "After user reported truncation and poor results, all primary prompts were shortened below 200 characters. Prior long prompts are historical detail only."
+}

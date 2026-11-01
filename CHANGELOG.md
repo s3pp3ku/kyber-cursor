@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — aim (the blade faces your movement)
+
+- New **Aim** mode, off by default: the blade turns to face the pointer's
+  direction of travel and keeps its angle when the pointer stops (the
+  Worms-cursor idea, maths ported from `otlet.worms-cursor`). The turn is
+  smoothed over 8 px of travel with a 3° deadband and a 720°/s slew, so it
+  reads as aiming rather than snapping. `kyber aim on|off|toggle`, a switch
+  under "More settings", state in `<settings>/aim-mode`.
+- Aim lives in the native overlay runtime only: the XCursor theme is a static
+  bitmap and cannot rotate, so `kyber aim on` reports that and leaves the
+  switch off on the legacy path. The overlay caches the whole cursor body once
+  per (color, size), draws it turned about its tip every frame, and hides the
+  compositor pointer only after the replacement is on screen. The pointer comes
+  back on `kyber aim off`, SIGTERM/SIGINT, a panic and any other clean exit;
+  SIGKILL cannot be caught and is documented.
+- `kyber aim mirror on|off` (default on) reflects the artwork across the
+  pointer axis whenever the unmirrored glyph would turn its lit edge away, so
+  the light keeps reading from the same side as the blade spins.
+- Idle cost: the loop ticks at 60 fps while aim is on but only uploads a frame
+  when the picture can change, and damage stays around the cursor.
+- `kyber config` gained `"aim"` and `"aimMirror"`; `kyber status` lists aim.
+
 ## Unreleased — lightsaber sparks
 
 - Sparks now fly off the drag trail, drawn by Kyber itself on every platform

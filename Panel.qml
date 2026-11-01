@@ -22,7 +22,7 @@ Panel {
 
   readonly property color fg: bar ? bar.foreground : Commons.Color.foreground
   readonly property string fontFam: bar ? bar.fontFamily : Style.font.family
-  readonly property var cfg: hostWidget ? hostWidget.cfg : ({ active: false, color: "theme", sound: "all", trail: "on", volume: 55 })
+  readonly property var cfg: hostWidget ? hostWidget.cfg : ({ active: false, color: "theme", sound: "all", trail: "on", aim: "off", aimMirror: "on", volume: 55 })
   readonly property bool customColor: /^#[0-9a-fA-F]{6}$/.test(String(cfg.color))
   // where the glow color comes from: theme | custom | random
   readonly property string mode: cfg.mode ? String(cfg.mode) : (customColor ? "custom" : "theme")
@@ -378,6 +378,42 @@ Panel {
               checked: root.cfg.trail === "on"
               accent: root.shownHex
               onToggled: root.act("trail " + (root.cfg.trail === "on" ? "off" : "on"))
+            }
+          }
+
+          // Aim: the blade turns to face the pointer's direction of travel and
+          // keeps its angle when the pointer stops. Only the native overlay
+          // runtime can draw that (the XCursor theme is a static bitmap), so
+          // the switch simply stays off where that runtime is not installed.
+          Row {
+            width: parent.width; spacing: Style.spacing.lg
+            Label {
+              text: "Aim (blade faces your movement)"
+              width: parent.width - aimSwitch.width - Style.spacing.lg
+              wrapMode: Text.WordWrap
+              anchors.verticalCenter: parent.verticalCenter
+            }
+            ToggleSwitch {
+              id: aimSwitch
+              checked: root.cfg.aim === "on"
+              accent: root.shownHex
+              onToggled: root.act("aim " + (root.cfg.aim === "on" ? "off" : "on"))
+            }
+          }
+          Row {
+            visible: root.cfg.aim === "on"
+            width: parent.width; spacing: Style.spacing.lg
+            Label {
+              text: "Mirror the lit edge as it turns"
+              width: parent.width - aimMirrorSwitch.width - Style.spacing.lg
+              wrapMode: Text.WordWrap
+              anchors.verticalCenter: parent.verticalCenter
+            }
+            ToggleSwitch {
+              id: aimMirrorSwitch
+              checked: (root.cfg.aimMirror || "on") === "on"
+              accent: root.shownHex
+              onToggled: root.act("aim mirror " + ((root.cfg.aimMirror || "on") === "on" ? "off" : "on"))
             }
           }
 

@@ -6,8 +6,20 @@ license = "MIT"
 description = "Linux Kyber core: cursor rendering, color, settings, Xcursor and recorded audio."
 autoexamples = false
 
+[[example]]
+name = "windows_frames"
+path = "examples/windows_frames.rs"
+
+[[example]]
+name = "glow_review"
+path = "examples/glow_review.rs"
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 resvg = "0.45"
 image = "0.25"
+
+[[example]]
+name = "trail_review"
+path = "examples/trail_review.rs"

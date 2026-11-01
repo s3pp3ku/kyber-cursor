@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "role": "ignite",
+  "status": "owner selected existing recordings for all private packages; synthetic drafts rejected",
+  "audition_revision": 2,
+  "audition_directory": "test-artifacts/ignition-rise-2026-10-17",
+  "review_archive": {
+    "file": "test-artifacts/ignition-rise-2026-10-17.zip",
+    "sha256": "f3d89dc18158e34c07391f337f76bd7d415755df6a968ec37e31771a60c14ab2"
+  },
+  "approved_hold_sha256": "1303b079c6b09d3e8a93f56bfcca4836ad7419cf0e54a229c2bf7a170976346b",
+  "user_requirements": [
+    "Power-up goes up in pitch and energy; it must sound like activation.",
+    "Power-down must take the opposite descending direction.",
+    "Prior drafts sound like clashing lightsabers and are too similar.",
+    "Preserve the approved complete four-layer hold blend."
+  ],
+  "hold_preservation": "Earlier synthetic hold approval is historical; user explicitly replaced it with downloaded hum clips.",
+  "shutdown_status": "Selected recorded off clips in shared default pack (see default-pack.json)",
+  "deployment_status": "Not installed; live runtime unchanged",
+  "rejected_auditions": [
+    {
+      "revision": 1,
+      "status": "rejected by user on 2026-10-17",
+      "reason": "All three sound very off and too similar; the impact suggests a clash instead of upward activation.",
+      "audition_directory": "test-artifacts/ignition-drafts-2026-10-17",
+      "review_archive": {
+        "file": "test-artifacts/ignition-drafts-2026-10-17.zip",
+        "sha256": "b1daac50e06e1808198a42b0b187986041509060f09134ce7eba0788cc997241"
+      },
+      "options": [
+        {
+          "active_seconds": 1.35,
+          "description": "A defined contact snap, a smooth electrical bloom and a gradual handoff to the hum.",
+          "file": "01-smooth.wav",
+          "file_seconds": 1.8,
+          "hum_full_seconds": 1.1,
+          "hum_start_seconds": 0.24,
+          "id": "01-smooth",
+          "label": "1 \u00b7 Smooth rise",
+          "seed": 20737,
+          "sources": [
+            "contact spark",
+            "loaded currents",
+            "low rotor",
+            "resonant discharges"
+          ],
+          "synthesis_gain": 0.6677318776585794,
+          "cycle_file": "01-smooth-into-hum.wav",
+          "accent_sha256": "2a4a8805df03cdb889e7dc938fdd8d5e290ef70a6929c7718cd53820e736a85e",
+          "cycle_sha256": "d46033a58baeff75263be671cfc042ad8e98e7df5397392e1b053fcfd2fb5a61",
+          "cycle_peak": 0.7199926755577257
+        },
+        {
+          "active_seconds": 1.05,
+          "description": "A stronger initial snap and two short surges, settling into the hum sooner.",
+          "file": "02-burst.wav",
+          "file_seconds": 1.8,
+          "hum_full_seconds": 0.78,
+          "hum_start_seconds": 0.16,
+          "id": "02-burst",
+          "label": "2 \u00b7 Sharp burst",
+          "seed": 20994,
+          "sources": [
+            "contact spark",
+            "loaded currents",
+            "low rotor",
+            "resonant discharges"
+          ],
+          "synthesis_gain": 0.5131841560132072,
+          "cycle_file": "02-burst-into-hum.wav",
+          "accent_sha256": "f6691b22549780d6a7f0f35de2752195dc02f11dfa3850315f551a2502614be6",
+          "cycle_sha256": "35ae96921f2de970c24eedf6a22a60093489c7a761fb2194ca7492ec688bfdba",
+          "cycle_peak": 0.7640940860091361
+        },
+        {
+          "active_seconds": 1.5,
+          "description": "A lower, rougher charge with more irregular electrical texture before it settles.",
+          "file": "03-rough.wav",
+          "file_seconds": 1.8,
+          "hum_full_seconds": 1.18,
+          "hum_start_seconds": 0.3,
+          "id": "03-rough",
+          "label": "3 \u00b7 Rough charge",
+          "seed": 21251,
+          "sources": [
+            "contact spark",
+            "loaded currents",
+            "low rotor",
+            "resonant discharges"
+          ],
+          "synthesis_gain": 0.5136556403616562,
+          "cycle_file": "03-rough-into-hum.wav",
+          "accent_sha256": "35fce30cdfbeec242c54b6de487a80ede963061093f32b4a63e033aa6f2a7d57",
+          "cycle_sha256": "97fb593dceb6c26848495b10190ca989f573f1b33e837ae429fce1ecdc914ed4",
+          "cycle_peak": 0.7199926755577257
+        }
+      ]
+    },
+    {
+      "revision": 2,
+      "status": "rejected by user on 2026-10-17",
+      "reason": "very bad. why can't we just use the clips?",
+      "audition_directory": "test-artifacts/ignition-rise-2026-10-17",
+      "review_archive": {
+        "file": "test-artifacts/ignition-rise-2026-10-17.zip",
+        "sha256": "f3d89dc18158e34c07391f337f76bd7d415755df6a968ec37e31771a60c14ab2"
+      },
+      "options": [
+        {
+          "active_seconds": 1.15,
+          "current_pitch_hz": [
+            108.0,
+            276.3
+          ],
+          "description": "The complete layered hum climbs from a low pitch into its normal pitch over 0.9 seconds, with a growing electrical current alongside it.",
+          "file": "rising-current-texture.wav",
+          "file_seconds": 1.8,
+          "hum_pitch_end_ratio": 1.0,
+          "hum_pitch_start_ratio": 0.38,
+          "id": "rising-current",
+          "label": "Rising current",
+          "resonance_hz": [
+            320.0,
+            1550.0
+          ],
+          "rise_seconds": 0.9,
+          "seed": 25089,
+          "sources": [
+            "approved complete hum, rising in pitch",
+            "two loaded rising currents",
+            "rising electrical resonance",
+            "quiet current-gated grain"
+          ],
+          "synthesis_gain": 0.21567588434259014,
+          "texture_sha256": "eed53cbcabc99f36b2e1d170fc78514acdf4ccc1422aa8d7765bd82e13df3ca1",
+          "accent_file": "rising-current-rise.wav",
+          "cycle_file": "rising-current-into-hum.wav",
+          "accent_sha256": "1e0f42bb784cc063968863da6043317d3f99105c3693a5c15ead63330967f042",
+          "cycle_sha256": "c9e1f1450844da44471b6d1b4ff3dcf88b707f3f4af03b4f36cb445008d3ceb0",
+          "cycle_peak": 0.7074800866725669
+        }
+      ]
+    }
+  ],
+  "latest_feedback": "very bad. why can't we just use the clips?",
+  "next_direction": "Use shared recorded pack; do not resume synthetic ignition drafts without new direction.",
+  "selected_recordings": [
+    "assets/sounds/ignite/lightsaber-ignite.wav",
+    "assets/sounds/ignite/lightsaber-ignite-burst.wav",
+    "assets/sounds/ignite/sith-lightsaber-1.wav"
+  ]
+}

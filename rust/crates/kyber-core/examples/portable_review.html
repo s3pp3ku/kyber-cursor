@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kyber portable visual test</title>
+<style>
+  :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
+  body { margin: 0 auto; padding: 24px; max-width: 1080px; background: #222; color: #eee; }
+  h1 { font-size: 26px; margin: 0 0 12px; }
+  p { line-height: 1.5; max-width: 76ch; }
+  a { color: #9cf; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 24px 0 12px; }
+  label { display: grid; gap: 6px; }
+  select, button { font: inherit; padding: 8px; border: 1px solid #888; border-radius: 4px; }
+  button { cursor: pointer; }
+  #panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  figure { margin: 0; border: 1px solid #777; }
+  figcaption { padding: 8px; font-size: 14px; }
+  .sample { height: 240px; display: grid; place-items: center; }
+  .sample img { width: 103px; height: 103px; }
+  #status { min-height: 1.5em; }
+  #notes { width: 100%; box-sizing: border-box; font: inherit; min-height: 7em; }
+</style>
+<h1>Kyber portable visual test</h1>
+<p>This shows the accepted Rust-rendered glow on six backgrounds. It is a visual preview;
+it does not replace your mouse pointer or test native cursor movement. It runs offline,
+does not change settings, and has no sound.</p>
+<div class="controls">
+  <label>Color<select id="color"></select></label>
+  <label>Glow variant<select id="bank">
+    <option value="matching">Match each background</option>
+    <option value="light">Light variant on every background</option>
+    <option value="dark">Dark variant on every background</option>
+  </select></label>
+  <label>Animation<select id="animation">
+    <option value="held">Held glow</option>
+    <option value="cycle">Ignite, hold, release</option>
+    <option value="idle">Idle blade</option>
+  </select></label>
+  <label>Size<select id="size">
+    <option value="103">Reference size</option>
+    <option value="206">2× inspection</option>
+  </select></label>
+  <button id="pause" type="button">Pause</button>
+  <button id="run" type="button" aria-pressed="false">Run all colors</button>
+</div>
+<p id="status" role="status">Loading frames…</p>
+<noscript><p>Animation needs JavaScript. You can still open <a href="index.html">the static color sheets</a>.</p></noscript>
+<div id="panels"></div>
+<p>Compare halo visibility on white and dark backgrounds, side-blade color, a smooth fade,
+and a steady bright core. Try both fixed glow variants too. Reference size uses the
+Linux trial’s image scale; your browser zoom and screen scaling affect its appearance.</p>
+<p><a href="index.html">All color sheets</a> · <a href="TESTING.txt">Test instructions</a></p>
+<label>Optional notes (stay on this page; copy them before closing)<textarea id="notes"
+  placeholder="Windows 11 or macOS version; browser; display scaling; color; background; what looked wrong"></textarea></label>
+<script id="palette" type="application/json">__KYBER_PALETTE__</script>
+<script>
+  'use strict';
+  const palette = JSON.parse(document.getElementById('palette').textContent);
+  const byId = id => document.getElementById(id);
+  const colors = byId('color'), bank = byId('bank'), animation = byId('animation');
+  const backgrounds = [
+    ['White', 'light', '#ffffff'], ['Warm white', 'light', '#f5f0e1'],
+    ['Light gray', 'light', '#c8c8c8'], ['Dark gray', 'dark', '#303034'],
+    ['Dark', 'dark', '#121216'], ['Black', 'dark', '#000000']
+  ];
+  const panels = backgrounds.map(([name, matching, background]) => {
+    const figure = document.createElement('figure');
+    const caption = document.createElement('figcaption');
+    caption.textContent = `${name} (${background})`;
+    const sample = document.createElement('div'); sample.className = 'sample';
+    sample.style.background = background;
+    const img = document.createElement('img'); img.alt = `Blade on ${name.toLowerCase()}`;
+    sample.append(img); figure.append(caption, sample); byId('panels').append(figure);
+    return { img, matching };
+  });
+  palette.forEach(([name, hex], index) => colors.add(new Option(`${hex} — ${name}`, index)));
+  let frames = new Map(), loading = true, loadVersion = 0, running = false;
+  let paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let elapsed = 0, previous = 0, colorStarted = performance.now();
+  function updatePause() { byId('pause').textContent = paused ? 'Play' : 'Pause'; }
+  updatePause();
+  function frameAt(time) {
+    const step = n => `-${String(n).padStart(2, '0')}.png`;
+    const hold = n => `-hold-${String(n % 24).padStart(2, '0')}.png`;
+    if (animation.value === 'idle') return step(0);
+    if (animation.value === 'held') return hold(Math.floor(time / 80));
+    const t = time % 2680;
+    if (t < 150) return step(Math.min(16, Math.floor(t / 150 * 16)));
+    if (t < 2070) return hold(Math.floor((t - 150) / 80));
+    if (t < 2180) return step(Math.max(0, Math.ceil((1 - (t - 2070) / 110) * 16)));
+    return step(0);
+  }
+  function draw() {
+    if (loading) return;
+    const suffix = frameAt(elapsed);
+    panels.forEach(({img, matching}) => {
+      const key = (bank.value === 'matching' ? matching : bank.value) + suffix;
+      const source = frames.get(key).src;
+      if (img.src !== source) img.src = source;
+    });
+  }
+  async function loadColor() {
+    const version = ++loadVersion;
+    loading = true; elapsed = 0;
+    panels.forEach(({img}) => img.removeAttribute('src'));
+    const [name, hex] = palette[Number(colors.value)];
+    byId('status').textContent = `Loading ${hex}…`;
+    const next = new Map(), jobs = [];
+    for (const mode of ['light', 'dark']) {
+      const filenames = Array.from({length: 17}, (_, n) => `${mode}-${String(n).padStart(2, '0')}.png`)
+        .concat(Array.from({length: 24}, (_, n) => `${mode}-hold-${String(n).padStart(2, '0')}.png`));
+      for (const filename of filenames) {
+        const img = new Image(); next.set(filename, img);
+        jobs.push(new Promise((resolve, reject) => {
+          img.onload = resolve; img.onerror = () => reject(new Error(filename));
+          img.src = `${name}/${filename}`;
+        }));
+      }
+    }
+    try {
+      await Promise.all(jobs);
+      if (version !== loadVersion) return;
+      frames = next; loading = false; colorStarted = performance.now();
+      byId('status').textContent = `${Number(colors.value) + 1} of ${palette.length} colors — ${hex}`;
+      draw();
+    } catch (error) {
+      if (version !== loadVersion) return;
+      running = false; updateRun();
+      byId('status').textContent = `Could not load ${error.message}. Extract the entire ZIP before opening this page.`;
+    }
+  }
+  function updateRun() {
+    byId('run').textContent = running ? 'Stop color run' : 'Run all colors';
+    byId('run').setAttribute('aria-pressed', String(running));
+  }
+  colors.onchange = loadColor;
+  bank.onchange = draw;
+  animation.onchange = () => { elapsed = 0; draw(); };
+  byId('size').onchange = event => panels.forEach(({img}) => {
+    img.style.width = img.style.height = `${event.target.value}px`;
+  });
+  byId('pause').onclick = () => { paused = !paused; updatePause(); };
+  byId('run').onclick = () => {
+    running = !running; colorStarted = performance.now(); updateRun();
+  };
+  function tick(now) {
+    const delta = previous ? Math.min(now - previous, 100) : 0; previous = now;
+    if (!document.hidden && !loading) {
+      if (!paused) elapsed += delta;
+      draw();
+      if (running && now - colorStarted >= 6000) {
+        colors.value = (Number(colors.value) + 1) % palette.length; loadColor();
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  loadColor(); requestAnimationFrame(tick);
+</script>
+</html>
