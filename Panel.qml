@@ -9,7 +9,6 @@ import qs.Ui
 // brightness bar, choose the sound, set the volume, switch the drag trail and
 // the cursor itself on or off. Every change goes through the `kyber` command
 // (the bar widget's act()), so it matches the keybinds and the terminal.
-// With Plume installed it also sets Plume's pointer trail, through Plume's IPC.
 Panel {
   id: root
   moduleName: "io.github.s3pp3ku.kyber-cursor"
@@ -83,13 +82,18 @@ Panel {
   }
   function picked() { applyTimer.restart() }
 
+  // wheel over a slider scrolls the settings, never moves the slider
+  function scrollPanel(dy) {
+    scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, scroller.contentY - dy))
+  }
+
   function open() { syncFromConfig(); root.controller.show() }
   function close() { root.controller.hide() }
   function toggle() { if (root.opened) root.close(); else root.open() }
 
   function act(args) { if (hostWidget) hostWidget.act(args) }
   // the effects preset, worked out from the settings it sets; "" when the
-  // user has mixed their own under More settings
+  // user has mixed their own below
   readonly property string effects: cfg.trail === "on" && particles === "sparks" && cfg.sound === "all" ? "full"
     : cfg.trail === "on" && particles === "off" && cfg.sound === "ignite" ? "minimal"
     : cfg.trail !== "on" && cfg.sound === "mute" ? "basic" : ""
@@ -99,22 +103,6 @@ Panel {
   readonly property bool defaultLook: trailStyle === "comet" && particles === "sparks"
     && Number(cfg.sparkLife || 850) === 850 && Number(cfg.sparkGap || 20) === 20
     && (cfg.sparkColors || "mixed") === "mixed"
-  // "More settings" stays folded unless the user opens it
-  property bool moreOpen: false
-  // Plume's live settings (null when Plume is not installed) and its setter
-  readonly property var plume: hostWidget ? hostWidget.plume : null
-  function plumeSet(key, value) { if (hostWidget) hostWidget.plumeSet(key, value) }
-  // the Plume trail style: with the blade gate on it is the style worn while lit,
-  // otherwise Plume's own trail setting
-  readonly property bool plumeGate: hostWidget ? hostWidget.plumeGate : false
-  readonly property string plumeStyle: plumeGate ? (hostWidget ? hostWidget.plumeStyle : "sparks")
-    : (plume ? String(plume.trail) : "none")
-  function pickPlumeStyle(style) {
-    if (!hostWidget) return
-    if (plumeGate) hostWidget.setPlumeStyle(style)
-    else plumeSet("trail", style)
-  }
-
   // ---------------------------------------------------------- components
   component ColorBar: Item {
     id: cb
@@ -162,7 +150,7 @@ Panel {
   }
 
   // Slider captions share one width: the widest any of them can get.
-  TextMetrics { id: captionMetrics; font.family: root.fontFam; font.pixelSize: Style.font.body; text: "Bubbles last 2.00s" }
+  TextMetrics { id: captionMetrics; font.family: root.fontFam; font.pixelSize: Style.font.body; text: "Sparks last 2.00s" }
   readonly property real captionW: Math.ceil(captionMetrics.advanceWidth) + Style.space(6)
 
   component Label: Text {
@@ -227,6 +215,17 @@ Panel {
               fontFamily: hero.fontFamily
               onClicked: root.close()
             }
+          }
+        }
+
+        Row {
+          width: parent.width; spacing: Style.spacing.lg
+          Label { text: "Kyber cursor"; width: parent.width - activeSwitch.width - Style.spacing.lg; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
+          ToggleSwitch {
+            id: activeSwitch
+            checked: root.cfg.active === true
+            accent: root.shownHex
+            onToggled: root.act(root.cfg.active === true ? "off" : "apply")
           }
         }
 
@@ -333,13 +332,15 @@ Panel {
           text: root.effects === "full" ? "Glow, drag trail, sparks and every sound."
             : root.effects === "minimal" ? "Glow and drag trail, no sparks, only the ignite sounds."
             : root.effects === "basic" ? "Just the glow. No trail, no sounds."
-            : "Changed under More settings. Pick one above to go back."
+            : "Changed below. Pick one above to go back."
         }
         Row {
           spacing: Style.spacing.lg
           width: parent.width
           Label { text: "Volume " + Math.round(volumeSlider.liveValue) + "%"; anchors.verticalCenter: parent.verticalCenter; width: root.captionW }
           PanelSlider {
+            // the stock slider steps its value on wheel; this overlay (on top, wheel only) scrolls the panel instead
+            MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function(w) { root.scrollPanel(w.angleDelta.y) } }
             id: volumeSlider
             bar: root.bar
             width: parent.width - root.captionW - Style.spacing.lg
@@ -350,14 +351,11 @@ Panel {
           }
         }
 
-        // everything else, folded away: the stock experience needs none of it
-        Label {
-          text: (root.moreOpen ? "▾ " : "▸ ") + "More settings"
-          opacity: 0.7; font.pixelSize: Style.font.caption
-          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.moreOpen = !root.moreOpen }
-        }
+        PanelSeparator { foreground: root.fg }
+
+        PanelSectionHeader { text: "TRAIL AND AIM"; foreground: root.fg; fontFamily: root.fontFam; font.letterSpacing: 1 }
+
         Column {
-          visible: root.moreOpen
           width: parent.width
           spacing: Style.spacing.lg
 
@@ -422,9 +420,11 @@ Panel {
             visible: root.cfg.trail === "on" && root.particles !== "off"
             spacing: Style.spacing.lg
             width: parent.width
-            Label { text: (root.particles === "bubbles" ? "Bubbles last " : "Sparks last ") + (lifeSlider.liveValue / 1000).toFixed(2) + "s"
+            Label { text: "Sparks last " + (lifeSlider.liveValue / 1000).toFixed(2) + "s"
               anchors.verticalCenter: parent.verticalCenter; width: root.captionW }
             PanelSlider {
+              // the stock slider steps its value on wheel; this overlay (on top, wheel only) scrolls the panel instead
+              MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function(w) { root.scrollPanel(w.angleDelta.y) } }
               id: lifeSlider
               bar: root.bar
               width: parent.width - root.captionW - Style.spacing.lg
@@ -442,6 +442,8 @@ Panel {
             // becomes 40..2 and dragging right adds sparks
             Label { text: "Close together"; anchors.verticalCenter: parent.verticalCenter; width: root.captionW }
             PanelSlider {
+              // the stock slider steps its value on wheel; this overlay (on top, wheel only) scrolls the panel instead
+              MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function(w) { root.scrollPanel(w.angleDelta.y) } }
               bar: root.bar
               width: parent.width - root.captionW - Style.spacing.lg
               anchors.verticalCenter: parent.verticalCenter
@@ -451,25 +453,6 @@ Panel {
             }
           }
 
-          Label { text: "Trail shape"; opacity: 0.7; font.pixelSize: Style.font.caption }
-          Flow {
-            width: parent.width
-            spacing: Style.spacing.sm
-            Repeater {
-              model: [{ k: "comet", t: "Comet" }, { k: "ribbon", t: "Ribbon" }, { k: "beads", t: "Beads" },
-                      { k: "echoes", t: "Echoes" }, { k: "none", t: "None" }]
-              Chip { text: modelData.t; chosen: root.trailStyle === modelData.k; onClicked: root.act("style " + modelData.k) }
-            }
-          }
-          Label { text: "What flies off it"; opacity: 0.7; font.pixelSize: Style.font.caption }
-          Flow {
-            width: parent.width
-            spacing: Style.spacing.sm
-            Repeater {
-              model: [{ k: "sparks", t: "Sparks" }, { k: "bubbles", t: "Bubbles" }, { k: "off", t: "Nothing" }]
-              Chip { text: modelData.t; chosen: root.particles === modelData.k; onClicked: root.act("sparks " + modelData.k) }
-            }
-          }
           // mixed: mostly hot orange-red sparks, a quarter in the glow color
           Label { visible: root.particles === "sparks"; text: "Spark colors"; opacity: 0.7; font.pixelSize: Style.font.caption }
           Flow {
@@ -487,81 +470,6 @@ Panel {
             color: "transparent"; border.width: 1; border.color: root.fg
             Label { id: resetLabel; anchors.centerIn: parent; text: "Reset the trail look" }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.act("sparks default") }
-          }
-
-          // Plume's pointer trail, when Plume is installed (see KyberWidget's bridge).
-          // Kyber draws its own sparks now, so Plume is optional.
-          Column {
-            visible: root.plume !== null
-            width: parent.width
-            spacing: Style.spacing.lg
-
-            Label { text: "Plume trail"; opacity: 0.7; font.pixelSize: Style.font.caption }
-            Flow {
-              width: parent.width
-              spacing: Style.spacing.sm
-              Repeater {
-                model: [{ k: "none", t: "Off" }, { k: "sparks", t: "Sparks" }, { k: "comet", t: "Comet" }, { k: "ribbon", t: "Ribbon" },
-                        { k: "beads", t: "Beads" }, { k: "echoes", t: "Echoes" }, { k: "bubbles", t: "Bubbles" }]
-                Chip { text: modelData.t; chosen: root.plumeStyle === modelData.k; onClicked: root.pickPlumeStyle(modelData.k) }
-              }
-            }
-            Repeater {
-              // Plume's own ranges: trailSize 2..30, trailLife 15..150 (hundredths of a second)
-              // captions name what each slider changes and show its value while dragging
-              model: [{ k: "trailSize", min: 2, max: 30, step: 1 }, { k: "trailLife", min: 15, max: 150, step: 5 }]
-              Row {
-                visible: root.plumeStyle !== "none"
-                width: parent.width; spacing: Style.spacing.lg
-                Label {
-                  text: modelData.k === "trailSize"
-                    ? "Trail width " + Math.round(plumeSlider.liveValue) + "px"
-                    : "Trail lasts " + (plumeSlider.liveValue / 100).toFixed(2) + "s"
-                  anchors.verticalCenter: parent.verticalCenter; width: root.captionW
-                }
-                PanelSlider {
-                  id: plumeSlider
-                  bar: root.bar
-                  width: parent.width - root.captionW - Style.spacing.lg
-                  anchors.verticalCenter: parent.verticalCenter
-                  minimum: modelData.min; maximum: modelData.max; step: modelData.step; integer: true
-                  value: root.plume ? Number(root.plume[modelData.k]) : modelData.min
-                  onReleased: function(v) { root.plumeSet(modelData.k, Math.round(v)) }
-                }
-              }
-            }
-            Row {
-              width: parent.width; spacing: Style.spacing.lg
-              Label { text: "Only while the blade is lit"; width: parent.width - gateSwitch.width - Style.spacing.lg; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
-              ToggleSwitch {
-                id: gateSwitch
-                checked: root.hostWidget ? root.hostWidget.plumeGate : false
-                accent: root.shownHex
-                onToggled: if (root.hostWidget) root.hostWidget.setPlumeGate(!root.hostWidget.plumeGate)
-              }
-            }
-            Row {
-              width: parent.width; spacing: Style.spacing.lg
-              Label { text: "Plume follows the glow color"; width: parent.width - syncSwitch.width - Style.spacing.lg; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
-              ToggleSwitch {
-                id: syncSwitch
-                checked: root.hostWidget ? root.hostWidget.plumeSync : false
-                accent: root.shownHex
-                onToggled: if (root.hostWidget) root.hostWidget.setPlumeSync(!root.hostWidget.plumeSync)
-              }
-            }
-          }
-        }
-
-        PanelSeparator { foreground: root.fg }
-        Row {
-          width: parent.width; spacing: Style.spacing.lg
-          Label { text: "Kyber cursor"; width: parent.width - activeSwitch.width - Style.spacing.lg; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
-          ToggleSwitch {
-            id: activeSwitch
-            checked: root.cfg.active === true
-            accent: root.shownHex
-            onToggled: root.act(root.cfg.active === true ? "off" : "apply")
           }
         }
       }
