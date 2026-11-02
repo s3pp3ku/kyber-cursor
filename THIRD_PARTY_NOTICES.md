@@ -10,12 +10,10 @@ parts and are reproduced in full here.
 - Project: https://github.com/qempexe/plume
 - License: MIT
 
-The drag-trail looks in `rust/crates/kyber-core/src/trail.rs` (the Sparks,
-Bubbles, Ribbon, Beads and Echoes looks: their particle motion, sizes, timing
-and fading) are adapted from Plume's `qml/js/trails/` scripts and rewritten in
-Rust. Kyber does not need Plume installed. When Plume is installed, the Kyber
-popup can also drive it through Plume's own `set` command; Plume itself is
-never modified.
+The drag-trail looks in `rust/crates/kyber-core/src/trail.rs` (the Comet and
+Sparks looks: their particle motion, sizes, timing and fading) are adapted from
+Plume's `qml/js/trails/` scripts and rewritten in Rust. Kyber does not need
+Plume installed and never calls it.
 
 Thank you, Andrei, for Plume and for releasing it as free software.
 
@@ -42,3 +40,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Worms cursor (otlet)
+
+- Author: otlet
+- Project: `otlet/omarchy-wormscursor` (the `otlet.worms-cursor` Omarchy plugin)
+
+The Aim mode (the blade turns to face its direction of travel and keeps that
+angle when the pointer stops) is that plugin's idea. The heading logic in
+`rust/crates/kyber-core/src/aim.rs` (travel needed before a heading is taken,
+heading smoothing, turn hysteresis and turn speed) is ported from its `Aim`
+class and rewritten in Rust. The plugin's own code and artwork are not
+included.
+
+Thank you, otlet, for the Worms cursor.

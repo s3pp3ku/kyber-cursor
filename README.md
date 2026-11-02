@@ -23,9 +23,9 @@ Every cursor role, generated from the accent:
 ## Features
 - Full cursor set (pointer, link, busy, text, crosshair, move, resize, grab, not-allowed...), regenerated in the current accent on every `omarchy theme set` and at boot.
 - Click-and-hold glow with ignition animation, beams growing out of the emitters, a slow pulse, and a drag trail (toggle it off with `kyber trail off` if you find it distracting).
-- Three effects levels, picked in one click: **Full** (glow, drag trail, lightsaber sparks, short hard cutting sparks, mostly hot orange-red with some in your glow color, and every sound; the default), **Minimal** (glow and trail, no sparks, only the ignite sounds) and **Basic** (just the glow, silent). Everything else (each sound mode, the trail switch, how long sparks last and how close together they fly, other trail looks such as ribbon, beads, echoes and bubbles) is tucked under "More settings". The trail looks are adapted from [Plume](https://github.com/qempexe/plume) by Andrei C. Popa (see [Credits](#credits)).
+- Three effects levels, picked in one click: **Full** (glow, drag trail, lightsaber sparks, short hard cutting sparks, mostly hot orange-red with some in your glow color, and every sound; the default), **Minimal** (glow and trail, no sparks, only the ignite sounds) and **Basic** (just the glow, silent). Everything else (each sound mode, the trail switch, how long sparks last and how close together they fly) is in the popup. The trail looks are adapted from [Plume](https://github.com/qempexe/plume) by Andrei C. Popa (see [Credits](#credits)).
 - The glow adapts to the page behind it: a pale, defined version over white pages, a vivid one over dark ones.
-- Optional **Aim** (off by default): the blade turns to face the direction you are moving and holds that angle when you stop, Worms-cursor style. It is drawn by the native overlay runtime, which hides the compositor pointer while it is on and gives it back when you switch aim off or the runtime exits. `kyber aim on|off|toggle`, plus the switch under "More settings". Aim needs the native overlay runtime: the XCursor theme is a static bitmap, so `kyber aim on` says so and stays off where that runtime is not installed.
+- Optional **Aim** (off by default): the blade turns to face the direction you are moving and holds that angle when you stop, in the style of otlet's Worms cursor (see [Credits](#credits)). It is drawn by the native overlay runtime, which hides the compositor pointer while it is on and gives it back when you switch aim off or the runtime exits. `kyber aim on|off|toggle`, plus the switch in the popup. Aim needs the native overlay runtime: the XCursor theme is a static bitmap, so `kyber aim on` says so and stays off where that runtime is not installed.
 - A bar button with a popup: a color picker (hue, vividness and brightness bars plus presets), trail and on/off switches. No terminal needed.
 - Three glow-color sources: **Theme** (follows the Omarchy accent, the default), **Custom** (your own color) and **Random** (a new vivid color at each theme change and at boot, or on demand). Random colors are always bright and clearly different from the last one.
 - Dark accents (deep orange, red, purple) are brightened so every theme glows about equally.
@@ -135,8 +135,8 @@ kyber volume 40    # sound volume, 0-100
 kyber sparks life 600   # how long sparks last, 150-1500 ms (default 850)
 kyber sparks gap 5      # how close together, 2-40 px of travel per spark (default 20)
 kyber sparks colors glow   # every spark in the glow color (default: mixed, mostly hot orange-red)
-kyber sparks bubbles    # sparks | bubbles | off; `kyber sparks default` resets the look
-kyber style ribbon      # trail shape: comet (default) | ribbon | beads | echoes | none
+kyber sparks off        # sparks | off; `kyber sparks default` resets the look
+kyber style none        # drag trail shape: comet (default) | none
 kyber config       # every setting as one line of JSON
 kyber status
 ```
@@ -217,11 +217,15 @@ reference; the standard installer runs the Rust CLI and helper.
 
 ## Credits
 
-The Sparks, Bubbles, Ribbon, Beads and Echoes trail looks are adapted from
+The Comet and Sparks trail looks are adapted from
 [Plume](https://github.com/qempexe/plume) by Andrei C. Popa
 ([qempexe](https://github.com/qempexe)), MIT License. Kyber draws them itself,
 so Plume is not needed; its full license is in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thank you, Andrei.
+
+The Aim mode, where the blade turns to face its direction of travel, is the idea
+of otlet's Worms cursor (`otlet/omarchy-wormscursor`); the heading logic is
+ported from it. Thank you, otlet.
 
 ## License
 

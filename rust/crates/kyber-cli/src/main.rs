@@ -69,7 +69,7 @@ fn widget_config(cfg: &KyberConfig, accent: Option<&str>) -> serde_json::Value {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: kyber apply | off | effects [full|minimal|basic] | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | aim [on|off|toggle] | aim mirror [on|off|toggle] | sparks [sparks|bubbles|off|life MS|gap PX|colors mixed|glow|default] | style [comet|ribbon|beads|echoes|none] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
+    eprintln!("usage: kyber apply | off | effects [full|minimal|basic] | color [theme|custom|random|#rrggbb] | sound [all|ignite|mute|cycle] | trail [on|off] | aim [on|off|toggle] | aim mirror [on|off|toggle] | sparks [sparks|off|life MS|gap PX|colors mixed|glow|default] | style [comet|none] | volume [0-100] | random | sounds [default|list] | config | status | doctor");
     std::process::exit(2);
 }
 
@@ -261,7 +261,7 @@ fn cmd_trail_style(args: &[String]) {
             all[(all.iter().position(|s| *s == current).unwrap_or(0) + 1) % all.len()]
         }
         v => TrailStyle::parse(v).unwrap_or_else(|| {
-            eprintln!("usage: kyber style comet | ribbon | beads | echoes | none | cycle");
+            eprintln!("usage: kyber style comet | none | cycle");
             std::process::exit(2);
         }),
     };
@@ -275,7 +275,7 @@ fn cmd_sparks(args: &[String]) {
     let usage = || -> ! {
         let (l, g) = (TrailLook::SPARK_LIFE_MS, TrailLook::SPARK_GAP_PX);
         eprintln!(
-            "usage: kyber sparks sparks | bubbles | off | cycle | life {}-{} (ms) | gap {}-{} (px, smaller is closer together) | colors mixed|glow | default",
+            "usage: kyber sparks sparks | off | cycle | life {}-{} (ms) | gap {}-{} (px, smaller is closer together) | colors mixed|glow | default",
             l.0, l.1, g.0, g.1
         );
         std::process::exit(2);

@@ -1,12 +1,12 @@
 //! Portable fading movement trail. Hosts supply local pointer events and a viewport;
 //! no input devices, IPC, desktop APIs, or cursor body are involved here.
 //!
-//! The Ribbon, Beads, Echoes, Sparks and Bubbles looks are adapted from Plume
+//! The Comet and Sparks looks are adapted from Plume
 //! (https://github.com/qempexe/plume), Copyright (c) 2026 Andrei C. Popa,
 //! MIT License. See THIRD_PARTY_NOTICES.md at the repository root.
 use std::collections::VecDeque;
 
-use resvg::tiny_skia::{Color, FillRule, LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
+use resvg::tiny_skia::{Color, LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
 
 use crate::config::SmallRng;
 pub use crate::config::{Particles, TrailLook, TrailStyle};
@@ -17,10 +17,8 @@ const PAD: f64 = 12.0;
 /// The thickness the path looks are drawn at, in logical px (Plume's `size`).
 const SIZE: f64 = 6.0;
 const MAX_SPARKS: usize = 180;
-const MAX_BUBBLES: usize = 90;
-/// Sparks fall; bubbles rise. Logical px per second (squared for gravity).
+/// Sparks fall. Logical px per second (squared for gravity).
 const GRAVITY: f64 = 160.0;
-const BUBBLE_RISE: f64 = 28.0;
 /// The share of sparks in hot-metal colors rather than the glow color.
 const EMBER_SHARE: f64 = 0.75;
 /// A hot-metal spark's color as it dies, hottest first: orange, red-orange,
@@ -63,7 +61,7 @@ struct Point {
     time: f64,
 }
 
-/// One spark or bubble. Age comes from the real clock, so particles always
+/// One spark. Age comes from the real clock, so particles always
 /// burn out on time; motion uses a capped step so a stalled frame never
 /// teleports them.
 #[derive(Clone, Copy)]
@@ -76,10 +74,6 @@ struct Particle {
     life: f64,
     /// When the motion was last stepped.
     moved: f64,
-    /// Bubble radius at birth; unused by sparks.
-    radius: f64,
-    /// Bubble sway phase; unused by sparks.
-    phase: f64,
     /// A spark that burns like real metal instead of wearing the glow color.
     ember: bool,
 }
@@ -208,8 +202,6 @@ impl Trail {
         let (max, gap) = match self.look.particles {
             Particles::Off => return,
             Particles::Sparks => (MAX_SPARKS, f64::from(self.look.spark_gap.max(1))),
-            // Bubbles are bigger; space them at least their own width apart.
-            Particles::Bubbles => (MAX_BUBBLES, f64::from(self.look.spark_gap.max(1)).max(SIZE * 2.0)),
         };
         let life = f64::from(self.look.spark_life) / 1000.0;
         self.travel += distance;
@@ -221,37 +213,19 @@ impl Trail {
             let along = (1.0 - self.travel / distance).clamp(0.0, 1.0);
             let (px, py) = (from.x + (x - from.x) * along, from.y + (y - from.y) * along);
             let r = &mut self.rng;
-            let particle = match self.look.particles {
-                Particles::Sparks => {
-                    let angle = r.range(0.0, std::f64::consts::TAU);
-                    let life = life * r.range(0.6, 1.0);
-                    // With drag k a spark travels speed / k before stalling.
-                    let speed = r.range(SPARK_REACH.0, SPARK_REACH.1) * SPARK_DRAG / life;
-                    Particle {
-                        x: px,
-                        y: py,
-                        vx: angle.cos() * speed,
-                        vy: angle.sin() * speed,
-                        born: now,
-                        moved: now,
-                        life,
-                        radius: 0.0,
-                        phase: 0.0,
-                        ember: r.range(0.0, 1.0) < EMBER_SHARE,
-                    }
-                }
-                _ => Particle {
-                    x: px + r.range(-0.5, 0.5) * SIZE,
-                    y: py,
-                    vx: 0.0,
-                    vy: -BUBBLE_RISE,
-                    born: now,
-                    moved: now,
-                    life: life * r.range(1.2, 2.2),
-                    radius: SIZE * r.range(0.25, 0.7),
-                    phase: r.range(0.0, std::f64::consts::TAU),
-                    ember: false,
-                },
+            let angle = r.range(0.0, std::f64::consts::TAU);
+            let life = life * r.range(0.6, 1.0);
+            // With drag k a spark travels speed / k before stalling.
+            let speed = r.range(SPARK_REACH.0, SPARK_REACH.1) * SPARK_DRAG / life;
+            let particle = Particle {
+                x: px,
+                y: py,
+                vx: angle.cos() * speed,
+                vy: angle.sin() * speed,
+                born: now,
+                moved: now,
+                life,
+                ember: r.range(0.0, 1.0) < EMBER_SHARE,
             };
             self.particles.push(particle);
         }
@@ -290,19 +264,11 @@ impl Trail {
         self.particles.len()
     }
 
-    /// How far a particle's drawing reaches from its center.
+    /// How far a spark's drawing reaches from its center: the streak trails
+    /// back along the velocity.
     fn reach(&self, p: &Particle) -> (f64, f64, f64, f64) {
-        match self.look.particles {
-            // the streak trails back along the velocity
-            Particles::Sparks => {
-                let (tx, ty) = (p.x - p.vx * 0.045, p.y - p.vy * 0.045);
-                (p.x.min(tx), p.y.min(ty), p.x.max(tx), p.y.max(ty))
-            }
-            _ => {
-                let m = p.radius * 1.8 + SIZE * 0.35;
-                (p.x - m, p.y - m, p.x + m, p.y + m)
-            }
-        }
+        let (tx, ty) = (p.x - p.vx * 0.045, p.y - p.vy * 0.045);
+        (p.x.min(tx), p.y.min(ty), p.x.max(tx), p.y.max(ty))
     }
 
     pub fn bounds(&mut self, now: f64) -> Option<Bounds> {
@@ -370,15 +336,11 @@ impl Trail {
             match self.look.style {
                 TrailStyle::None => {}
                 TrailStyle::Comet => self.render_comet(now, &mut pixels, &pen),
-                TrailStyle::Ribbon => self.render_ribbon(&mut pixels, &pen),
-                TrailStyle::Beads => self.render_beads(now, &mut pixels, &pen),
-                TrailStyle::Echoes => self.render_echoes(now, &mut pixels, &pen),
             }
         }
         match self.look.particles {
             Particles::Off => {}
             Particles::Sparks => self.render_sparks(now, &mut pixels, &pen),
-            Particles::Bubbles => self.render_bubbles(now, &mut pixels, &pen),
         }
 
         Some(TrailImage {
@@ -407,56 +369,6 @@ impl Trail {
         }
     }
 
-    fn render_ribbon(&self, pixels: &mut Pixmap, pen: &Pen) {
-        // Plume's ribbon: a smooth band that follows every curve. Smooth the path
-        // (Catmull-Rom), then draw a wide faint band over a narrow solid one so
-        // the edges read as one glowing tube.
-        let points: Vec<Point> = self.points.iter().copied().collect();
-        let smooth = smooth_path(&points, 4.0);
-        if smooth.len() < 2 {
-            return;
-        }
-        let path = build_band_path(&smooth, pen.x, pen.y, pen.factor);
-        for (width_scale, strength) in [(2.2, 0.22), (0.8, 1.0)] {
-            pen.stroke(pixels, &path, strength, 5.6 * width_scale);
-        }
-    }
-
-    fn render_beads(&self, now: f64, pixels: &mut Pixmap, pen: &Pen) {
-        // Plume's beads: dots spaced evenly along the path, shrinking and
-        // fading toward the end. Walk newest first so the spacing is anchored
-        // at the pointer and the beads don't crawl along the path.
-        let gap = (SIZE * 1.6).max(4.0);
-        let mut carry = 0.0;
-        for (i, (a, b)) in self.points.iter().rev().zip(self.points.iter().rev().skip(1)).enumerate() {
-            let (dx, dy) = (b.x - a.x, b.y - a.y);
-            let len = dx.hypot(dy);
-            let mut d = if i == 0 { 0.0 } else { gap - carry };
-            while d <= len {
-                let f = if len > 0.0 { d / len } else { 0.0 };
-                let k = 1.0 - Self::age(now, &Point { time: a.time + (b.time - a.time) * f, ..*a });
-                let radius = (SIZE * 0.5 * (0.3 + 0.7 * k)).max(0.6);
-                pen.fill_circle(pixels, a.x + dx * f, a.y + dy * f, radius, k);
-                d += gap;
-            }
-            carry = (carry + len) % gap;
-        }
-    }
-
-    fn render_echoes(&self, now: f64, pixels: &mut Pixmap, pen: &Pen) {
-        // Plume's echoes: rings left along the path, widening as they fade.
-        let gap = (SIZE * 2.5).max(10.0);
-        let mut last: Option<&Point> = None;
-        for p in self.points.iter().rev() {
-            if last.is_some_and(|l| (p.x - l.x).hypot(p.y - l.y) < gap) {
-                continue;
-            }
-            last = Some(p);
-            let t = Self::age(now, p);
-            pen.ring(pixels, p.x, p.y, SIZE * (0.4 + t * 1.4), (SIZE * 0.14).max(1.0), 1.0 - t);
-        }
-    }
-
     fn render_sparks(&self, now: f64, pixels: &mut Pixmap, pen: &Pen) {
         // Hard cutting sparks: thin streaks along each spark's flight that
         // shrink as drag stalls it, with only a slight glow under them.
@@ -471,17 +383,6 @@ impl Trail {
             let width = (SIZE * 0.2 * (1.0 - t * 0.5)).max(0.8);
             pen.stroke(pixels, &path, (1.0 - t) * 0.15, width * 2.2);
             pen.stroke(pixels, &path, 1.0 - t, width);
-        }
-    }
-
-    fn render_bubbles(&self, now: f64, pixels: &mut Pixmap, pen: &Pen) {
-        // Plume's bubbles: rings that rise and sway, with a small highlight.
-        for b in &self.particles {
-            let t = b.t(now);
-            let x = b.x + (b.phase + (now - b.born) * 4.0).sin() * SIZE * 0.35;
-            let r = b.radius * (1.0 + t * 0.8);
-            pen.ring(pixels, x, b.y, r, (SIZE * 0.1).max(0.8), 1.0 - t);
-            pen.fill_circle(pixels, x - r * 0.35, b.y - r * 0.35, (r * 0.18).max(0.6), (1.0 - t) * 0.5);
         }
     }
 }
@@ -533,94 +434,6 @@ impl Pen {
         };
         pixels.stroke_path(path, &paint, &stroke, Transform::identity(), None);
     }
-
-    fn fill_circle(&self, pixels: &mut Pixmap, cx: f64, cy: f64, radius: f64, strength: f64) {
-        let (Some(paint), Some(path)) = (self.paint(strength), self.circle(cx, cy, radius)) else { return };
-        pixels.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
-    }
-
-    fn ring(&self, pixels: &mut Pixmap, cx: f64, cy: f64, radius: f64, width: f64, strength: f64) {
-        if let Some(path) = self.circle(cx, cy, radius) {
-            self.stroke(pixels, &path, strength, width);
-        }
-    }
-
-    fn circle(&self, cx: f64, cy: f64, radius: f64) -> Option<Path> {
-        circle_path(
-            f64::from(self.px(cx)),
-            f64::from(self.py(cy)),
-            (radius * self.factor) as f32,
-        )
-        .finish()
-    }
-}
-
-/// Build a filled circle as a polygon (tiny-skia's PathBuilder has no native
-/// `circle` method in this version), so trails can dip and dot a path.
-fn circle_path(cx: f64, cy: f64, radius: f32) -> PathBuilder {
-    let mut p = PathBuilder::new();
-    const SEGMENTS: usize = 24;
-    for i in 0..=SEGMENTS {
-        let a = i as f32 * (std::f32::consts::PI * 2.0 / SEGMENTS as f32);
-        let px = cx + (radius * a.cos()) as f64;
-        let py = cy + (radius * a.sin()) as f64;
-        if i == 0 {
-            p.move_to(px as f32, py as f32);
-        } else {
-            p.line_to(px as f32, py as f32);
-        }
-    }
-    p.close();
-    p
-}
-
-/// Close a thick stroke along the smooth points for a ribbon band.
-fn build_band_path(pts: &[(f64, f64, f64)], x: f64, y: f64, factor: f64) -> Path {
-    let mut path = PathBuilder::new();
-    for (i, &(px, py, _t)) in pts.iter().enumerate() {
-        let fx = (px - x) * factor;
-        let fy = (py - y) * factor;
-        if i == 0 {
-            path.move_to(fx as f32, fy as f32);
-        } else {
-            path.line_to(fx as f32, fy as f32);
-        }
-    }
-    path.finish().unwrap()
-}
-
-/// Build a `Path` by walking the smooth points, so the ribbon and comet
-/// styles share one smooth-curve helper.
-fn smooth_path(points: &[Point], step: f64) -> Vec<(f64, f64, f64)> {
-    let mut out = Vec::new();
-    let n = points.len();
-    if n == 0 {
-        return out;
-    }
-    for i in 0..n - 1 {
-        let p0 = *points
-            .get(i.saturating_sub(1))
-            .unwrap_or_else(|| points.last().unwrap());
-        let p1 = *points.get(i).unwrap_or_else(|| points.last().unwrap());
-        let p2 = *points.get(i + 1).unwrap_or_else(|| points.last().unwrap());
-        let p3 = *points.get(i + 2).unwrap_or_else(|| points.last().unwrap());
-        let len = ((p2.x - p1.x).hypot(p2.y - p1.y)).max(1e-6);
-        let k = (len / step).clamp(1.0, 6.0);
-        for j in 0..k as i32 {
-            let u = j as f64 / k;
-            let u2 = u * u;
-            let u3 = u2 * u;
-            let c = |a: f64, b: f64, cc: f64, d: f64| {
-                0.5 * (2.0 * b + (-a + cc) * u + (2.0 * a - 5.0 * b + 4.0 * cc - d) * u2 + (-a + 3.0 * b - 3.0 * cc + d) * u3)
-            };
-            let x = c(p0.x, p1.x, p2.x, p3.x);
-            let y = c(p0.y, p1.y, p2.y, p3.y);
-            let t = p1.time + (p2.time - p1.time) * u;
-            out.push((x, y, t));
-        }
-    }
-    out.push((points[n - 1].x, points[n - 1].y, points[n - 1].time));
-    out
 }
 
 #[cfg(test)]
@@ -758,47 +571,6 @@ mod tests {
             other += u32::from(p[1]) + u32::from(p[2]);
         }
         assert!(red > 0 && red > other, "red {red} vs green+blue {other}");
-    }
-
-    #[test]
-    fn bubbles_rise_and_a_new_press_keeps_them() {
-        let mut trail = Trail::default();
-        trail.set_look(TrailLook { particles: Particles::Bubbles, ..TrailLook::default() });
-        for n in 0..40 {
-            trail.sample(n as f64 / 100.0, 100.0 + n as f64 * 3.0, 200.0);
-        }
-        let n = trail.particle_count();
-        assert!(n > 0 && n <= MAX_BUBBLES);
-        let before = trail.bounds(0.40).unwrap();
-        let after = trail.bounds(0.48).unwrap();
-        assert!(after.y < before.y, "bubbles float up");
-        trail.break_path();
-        assert_eq!(trail.point_count(), 0);
-        assert_eq!(trail.particle_count(), n);
-    }
-
-    #[test]
-    fn ribbon_shape_is_finite() {
-        let mut trail = trace();
-        trail.set_style(TrailStyle::Ribbon);
-        let image = trail.render(0.40, VIEW, false, 1.0).unwrap();
-        assert!(image.pixels.width() > 0 && image.pixels.height() > 0);
-    }
-
-    #[test]
-    fn beads_shape_is_finite() {
-        let mut trail = trace();
-        trail.set_style(TrailStyle::Beads);
-        let image = trail.render(0.40, VIEW, false, 1.0).unwrap();
-        assert!(image.pixels.width() > 0 && image.pixels.height() > 0);
-    }
-
-    #[test]
-    fn echoes_shape_is_finite() {
-        let mut trail = trace();
-        trail.set_style(TrailStyle::Echoes);
-        let image = trail.render(0.40, VIEW, false, 1.0).unwrap();
-        assert!(image.pixels.width() > 0 && image.pixels.height() > 0);
     }
 
     #[test]

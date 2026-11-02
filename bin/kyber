@@ -16,8 +16,8 @@
 #                              minimal: trail, no sparks, ignite sounds; basic: glow only, silent
 #   kyber sparks life MS|gap PX|default   how long sparks last, how close together
 #   kyber sparks colors mixed|glow        glow color plus hot orange-red sparks (default), or glow color only
-#   kyber sparks sparks|bubbles|off       what flies off the trail (sparks is the default)
-#   kyber style comet|ribbon|beads|echoes|none   the drag trail's look (comet is the default)
+#   kyber sparks sparks|off       what flies off the trail (sparks is the default)
+#   kyber style comet|none   the drag trail's look (comet is the default)
 #   kyber sounds default|add|list|preview   install or manage the selected sound pack
 #   kyber setup [--yes] [--bar]  one-step setup: previews by default, --yes does it (never uses sudo)
 #   kyber doctor               check dependencies and setup, and say how to fix anything
@@ -332,9 +332,9 @@ cmd_style() {
   local v="${1:-cycle}" cur
   cur=$(cat "$STATE/trail-style" 2>/dev/null || echo comet)
   if [[ $v == cycle ]]; then
-    case $cur in comet) v=ribbon ;; ribbon) v=beads ;; beads) v=echoes ;; echoes) v=none ;; *) v=comet ;; esac
+    case $cur in comet) v=none ;; *) v=comet ;; esac
   fi
-  [[ $v =~ ^(comet|ribbon|beads|echoes|none)$ ]] || { echo "usage: kyber style comet | ribbon | beads | echoes | none | cycle" >&2; exit 2; }
+  [[ $v =~ ^(comet|none)$ ]] || { echo "usage: kyber style comet | none | cycle" >&2; exit 2; }
   echo "$v" > "$STATE/trail-style"; echo "$v"
 }
 
@@ -356,11 +356,11 @@ cmd_sparks() {
   local v="${1:-cycle}" n="${2:-}" cur
   cur=$(cat "$STATE/trail-particles" 2>/dev/null || echo sparks)
   case $v in
-    cycle) case $cur in sparks) v=bubbles ;; bubbles) v=off ;; *) v=sparks ;; esac ;;
+    cycle) case $cur in sparks) v=off ;; *) v=sparks ;; esac ;;
     none) v=off ;;
   esac
   case $v in
-    sparks|bubbles|off) echo "$v" > "$STATE/trail-particles"; echo "$v" ;;
+    sparks|off) echo "$v" > "$STATE/trail-particles"; echo "$v" ;;
     life) [[ $n =~ ^[0-9]+$ && $n -ge 150 && $n -le 1500 ]] || { echo "usage: kyber sparks life 150-1500 (ms)" >&2; exit 2; }
           echo "$n" > "$STATE/spark-life"; echo "$n" ;;
     gap)  [[ $n =~ ^[0-9]+$ && $n -ge 2 && $n -le 40 ]] || { echo "usage: kyber sparks gap 2-40 (px, smaller is closer together)" >&2; exit 2; }
@@ -368,7 +368,7 @@ cmd_sparks() {
     colors) [[ $n =~ ^(mixed|glow)$ ]] || { echo "usage: kyber sparks colors mixed|glow" >&2; exit 2; }
           echo "$n" > "$STATE/spark-colors"; echo "$n" ;;
     default) rm -f "$STATE"/{trail-style,trail-particles,spark-life,spark-gap,spark-colors}; echo "comet sparks 850ms 20px mixed" ;;
-    *) echo "usage: kyber sparks sparks | bubbles | off | cycle | life MS | gap PX | colors mixed|glow | default" >&2; exit 2 ;;
+    *) echo "usage: kyber sparks sparks | off | cycle | life MS | gap PX | colors mixed|glow | default" >&2; exit 2 ;;
   esac
 }
 

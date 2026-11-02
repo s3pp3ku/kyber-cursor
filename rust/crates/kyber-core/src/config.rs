@@ -48,16 +48,10 @@ pub enum TrailStyle {
     /// A tail that tapers behind the pointer, brightest at its head.
     #[default]
     Comet,
-    /// A smooth glowing band that follows every curve.
-    Ribbon,
-    /// Evenly spaced dots along the path, shrinking toward the end.
-    Beads,
-    /// Rings left along the path, widening as they fade.
-    Echoes,
 }
 
 impl TrailStyle {
-    pub const ALL: [Self; 5] = [Self::Comet, Self::Ribbon, Self::Beads, Self::Echoes, Self::None];
+    pub const ALL: [Self; 2] = [Self::Comet, Self::None];
 
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|v| v.as_str() == s.trim().to_lowercase())
@@ -67,9 +61,6 @@ impl TrailStyle {
         match self {
             Self::None => "none",
             Self::Comet => "comet",
-            Self::Ribbon => "ribbon",
-            Self::Beads => "beads",
-            Self::Echoes => "echoes",
         }
     }
 }
@@ -81,13 +72,11 @@ pub enum Particles {
     /// Sparks that fly off, fall and burn out: the lightsaber look.
     #[default]
     Sparks,
-    /// Bubbles that float up, swaying.
-    Bubbles,
     Off,
 }
 
 impl Particles {
-    pub const ALL: [Self; 3] = [Self::Sparks, Self::Bubbles, Self::Off];
+    pub const ALL: [Self; 2] = [Self::Sparks, Self::Off];
 
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_lowercase().as_str() {
@@ -99,7 +88,6 @@ impl Particles {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sparks => "sparks",
-            Self::Bubbles => "bubbles",
             Self::Off => "off",
         }
     }
@@ -112,7 +100,7 @@ impl Particles {
 pub struct TrailLook {
     pub style: TrailStyle,
     pub particles: Particles,
-    /// How long a spark or bubble lasts, in milliseconds.
+    /// How long a spark lasts, in milliseconds.
     pub spark_life: u32,
     /// Pointer travel between sparks, in logical pixels: smaller is denser.
     pub spark_gap: u32,
