@@ -374,7 +374,7 @@ SHAPES = {
     'crosshair':   ('crosshair', CENTER), 'cell': ('cell', CENTER), 'move': ('move', CENTER),
     'ns-resize':   ('resize:90', CENTER), 'ew-resize': ('resize:0', CENTER),
     'nwse-resize': ('resize:45', CENTER), 'nesw-resize': ('resize:-45', CENTER),
-    'grab':        ('hand:open', (30.0, 11.0)), 'grabbing': ('hand:closed', (27.0, 15.0)),
+    'grab':        ('pointer', T), 'grabbing': ('pointer', T),
 }
 ALIASES = {
     'default': ['left_ptr', 'default', 'top_left_arrow', 'arrow'],

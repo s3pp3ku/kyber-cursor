@@ -421,31 +421,6 @@ pub fn busy(accent: &str, glow: &str, lit: bool) -> (String, String) {
     (body, halo)
 }
 
-pub const GRAB: &str = "M16 27 V17 Q16 13 20 13 Q23 13 23 17 V11 Q23 7 27 7 Q31 7 31 11 V17 V14 Q31 10 35 10 Q39 10 39 14 V18 Q39 14 43 15 Q46 15 46 19 V32 Q46 44 32 44 H27 Q20 44 16 37 L10 29 Q8 25 11 23 Q14 21 16 27 Z";
-pub const GRABBING: &str = "M12 23 V17 Q12 13 16 13 Q19 13 19 17 V12 Q19 8 23 8 Q27 8 27 12 V16 V11 Q27 7 31 7 Q35 7 35 11 V16 Q35 12 39 12 Q43 12 43 16 V30 Q43 43 30 43 H23 Q12 43 12 32 Z";
-
-pub fn hand(closed: bool, accent: &str, glow: &str, lit: bool) -> (String, String) {
-    let path = if closed { GRABBING } else { GRAB };
-    let knuckles = if closed {
-        "M19 17 V24 M27 16 V24 M35 16 V24"
-    } else {
-        "M23 17 V25 M31 17 V25 M39 18 V25"
-    };
-    let mut body = format!(
-        "<path d=\"{}\" fill=\"url(#metal)\" stroke=\"#b8c0cc\" stroke-width=\"1.0\" stroke-linejoin=\"round\"/><path d=\"{}\" stroke=\"#05060a\" stroke-width=\"0.8\" stroke-linecap=\"round\"/>",
-        path, knuckles
-    );
-    let mut halo = String::new();
-    if closed {
-        // Gripping a lit saber: a beam runs behind the fist towards the corner.
-        let beam_c = if lit { glow } else { accent };
-        let (a, b) = ((6.0, 3.0), (24.0, 26.0));
-        body = line(a, b, beam_c, 2.4, "") + &line(a, b, "#ffffff", 1.0, "") + &body;
-        halo = line(a, b, beam_c, 4.6, "");
-    }
-    (body, halo)
-}
-
 pub fn disc(r: f64, fill: &str, rim: &str) -> String {
     let b = badge_center();
     format!(
@@ -550,8 +525,9 @@ pub fn role_kind(role: &str) -> &'static str {
         "ew-resize" => "resize:0",
         "nwse-resize" => "resize:45",
         "nesw-resize" => "resize:-45",
-        "grab" => "hand:open",
-        "grabbing" => "hand:closed",
+        // grabbing is the plain blade too: the glow sits on the blade, and a hand
+        // drawn over it left the glow showing behind the palm
+        "grab" | "grabbing" => "pointer",
         _ => "pointer",
     }
 }
@@ -573,8 +549,6 @@ pub fn build_shape(kind: &str, accent: &str, glow: &str, lit: bool) -> (String, 
         "crosshair" => crosshair(hot, lit, false),
         "cell" => crosshair(hot, lit, true),
         "move" => move_cursor(hot, lit),
-        "hand:open" => hand(false, accent, glow, lit),
-        "hand:closed" => hand(true, accent, glow, lit),
         _ if kind.starts_with("resize:") => {
             let angle: f64 = kind["resize:".len()..].parse().unwrap_or(0.0);
             double_arrow(angle, hot, lit)
@@ -613,8 +587,6 @@ pub fn hotspot(role: &str) -> (f64, f64) {
     match role {
         "wait" | "text" | "crosshair" | "cell" | "move" | "ns-resize" | "ew-resize"
         | "nwse-resize" | "nesw-resize" => view_center(),
-        "grab" => (30.0, 11.0),
-        "grabbing" => (27.0, 15.0),
         _ => tip(),
     }
 }
@@ -644,7 +616,8 @@ mod tests {
     fn roles_have_hotspots() {
         assert_eq!(ROLES.len(), 21);
         assert_eq!(hotspot("default"), tip());
-        assert_eq!(hotspot("grab"), (30.0, 11.0));
+        assert_eq!(hotspot("grab"), tip());
+        assert_eq!(hotspot("grabbing"), tip());
     }
 
     #[test]

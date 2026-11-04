@@ -361,17 +361,17 @@ mod wl {
             // Refresh the output list; fall back to the first output.
             let _ = self.queue.roundtrip(&mut self.app);
             let outs: Vec<_> = self.app.outputs.outputs().collect();
-            outs.iter()
-                .find(|o| {
-                    self.app
-                        .outputs
-                        .info(o)
-                        .and_then(|i| i.name.clone())
-                        .as_deref()
-                        == Some(name)
-                })
-                .cloned()
-                .or_else(|| outs.into_iter().next())
+            let names: Vec<Option<String>> = outs
+                .iter()
+                .map(|o| self.app.outputs.info(o).and_then(|i| i.name.clone()))
+                .collect();
+            match names.iter().position(|n| n.as_deref() == Some(name)) {
+                Some(i) => Some(outs[i].clone()),
+                None => {
+                    eprintln!("kyber-ignite: no output named {name} among {names:?}; using the first");
+                    outs.into_iter().next()
+                }
+            }
         }
 
         /// Map + size the overlay on `output`. Logical size, buffer scale up.
@@ -1132,6 +1132,11 @@ pub fn run_daemon() -> i32 {
             let live = engine.tick(now, Some(last_pos));
             let aimed = aim.settings.enabled
                 && arm_aim(&mut aim, &mut art, &mut overlay, &mut placement, last_pos, &mut aim_warned);
+            // A drag that crosses to another screen takes the glow with it:
+            // aim follows the pointer on its own, the held glow did not.
+            if live && !aimed {
+                follow_pointer(&mut overlay, &mut placement, last_pos, &mut last_drawn);
+            }
             while layers.try_recv().is_ok() {
                 remap_due = Some(Instant::now() + LAYER_SETTLE);
             }
@@ -1202,6 +1207,29 @@ pub fn run_daemon() -> i32 {
         if aim.settings.enabled {
             overlay.poll(Duration::from_millis(250));
         }
+    }
+}
+
+/// The pointer left the screen the overlay is on while the blade is lit:
+/// show the overlay on the screen it is on now, keeping the same lighting.
+fn follow_pointer(
+    overlay: &mut wl::Overlay,
+    placement: &mut Option<Placement>,
+    pos: (f64, f64),
+    last_drawn: &mut Option<((f64, f64), f64)>,
+) {
+    let Some(old) = placement.as_ref() else { return };
+    if cursor::monitor_at(&old.mons, pos.0, pos.1).is_none_or(|m| m == old.mon) {
+        return;
+    }
+    let light = old.light;
+    let Some((mons, mut pl, _)) = place() else { return };
+    let Some(out) = overlay.output_by_name(&mons[pl.mon].name) else { return };
+    pl.light = light;
+    pl.mons = mons;
+    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_ok() {
+        *placement = Some(pl);
+        *last_drawn = None;
     }
 }
 
