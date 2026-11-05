@@ -20,6 +20,8 @@ pub const OUTLINE: &str = "#0b0c0f";
 pub fn tip() -> (f64, f64) {
     (8.0, 5.0)
 }
+/// The blade's upright posture, 62 degrees from horizontal. Deliberate: the
+/// `axis_is_62_degrees_everywhere` test keeps the Python builder in step.
 pub fn axis_angle() -> f64 {
     62f64.to_radians()
 }
@@ -158,7 +160,7 @@ pub fn pointer(accent: &str, glow: &str, lit: bool) -> (String, String) {
     let r = head_r();
     let m = head_back();
     let mi = ridge_end();
-    let deg = 62.0;
+    let deg = axis_angle().to_degrees();
     let (beam_r, beam_l) = beam_dirs();
     let (emit_r, emit_l) = (emitter_r(), emitter_l());
 
@@ -611,6 +613,14 @@ pub fn svg_sized(inner: &str, with_defs: bool, px: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn axis_is_62_degrees_everywhere() {
+        assert!((axis_angle().to_degrees() - 62.0).abs() < 1e-9);
+        // the cursor picker and the Python fallback build from lib/build.py
+        let py = include_str!("../../../../lib/build.py");
+        assert!(py.contains("ANG = math.radians(62.0)"), "lib/build.py must keep the 62 degree axis");
+    }
 
     #[test]
     fn roles_have_hotspots() {
