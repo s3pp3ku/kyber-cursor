@@ -295,7 +295,7 @@ pub fn apply(accent: &str, icons: &Path) -> std::io::Result<PathBuf> {
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if name.starts_with(&format!("{THEME}."))
                 && cache_hit(&p, accent)
-                && icons.join(THEME).is_symlink()
+                && icons.join(THEME).read_link().is_ok_and(|to| to == p)
             {
                 return Ok(p);
             }
