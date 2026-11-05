@@ -1032,6 +1032,9 @@ pub fn run_daemon() -> i32 {
     let mut aim_warned = false;
     let mut art_checked = Instant::now();
     let mut last_drawn: Option<((f64, f64), f64)>;
+    let mut samples: std::collections::VecDeque<(Instant, (f64, f64))> = Default::default();
+    let mut glow_lead_s = GLOW_LEAD_MS / 1000.0;
+    let mut glow_lead_read = Instant::now() - Duration::from_secs(1);
     // Another layer opened: when the overlay should be mapped again so it is
     // back above it. Debounced, since a menu opens several surfaces at once.
     let layers = cursor::watch_layers();
@@ -1125,8 +1128,24 @@ pub fn run_daemon() -> i32 {
                 watch_new(&mut watched, &tx);
                 last_rescan = Instant::now();
             }
+            if glow_lead_read.elapsed() >= Duration::from_millis(500) {
+                glow_lead_read = Instant::now();
+                glow_lead_s = std::fs::read_to_string(
+                    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                        .join(".config/kyber-cursor/glow-lead-ms"),
+                )
+                .ok()
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(GLOW_LEAD_MS)
+                .clamp(0.0, 80.0)
+                    / 1000.0;
+            }
             if let Ok(p) = cursor::cursor_pos() {
                 last_pos = p;
+                samples.push_back((Instant::now(), p));
+                while samples.front().is_some_and(|(t, _)| t.elapsed() > POINTER_WINDOW) {
+                    samples.pop_front();
+                }
             }
             let now = now_s();
             let live = engine.tick(now, Some(last_pos));
@@ -1167,6 +1186,10 @@ pub fn run_daemon() -> i32 {
                     });
             if changed {
                 if let (Some(a), Some(pl)) = (art.as_ref(), placement.as_ref()) {
+                    // Aim draws the whole cursor itself; otherwise the glow is
+                    // laid over a pointer the compositor moves instantly, so it
+                    // is aimed a little ahead to land on the tip, not behind it.
+                    let glow_pos = if aimed { last_pos } else { led_position(&samples, pl, glow_lead_s) };
                     let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
                     let (hum_haze, hum_beam) = engine.hum(flicker);
                     let frame = render_frame(
@@ -1180,8 +1203,8 @@ pub fn run_daemon() -> i32 {
                             bs: pl.bs as f64,
                             mon_x: pl.mon_x,
                             mon_y: pl.mon_y,
-                            pos_x: last_pos.0,
-                            pos_y: last_pos.1,
+                            pos_x: glow_pos.0,
+                            pos_y: glow_pos.1,
                             trail: &trail_snapshot(&engine),
                             look: engine.trail_look,
                             aim: if aimed { aim.cursor() } else { None },
@@ -1207,6 +1230,44 @@ pub fn run_daemon() -> i32 {
         if aim.settings.enabled {
             overlay.poll(Duration::from_millis(250));
         }
+    }
+}
+
+/// How much pointer history the look-ahead reads, and how far ahead the glow
+/// is aimed: about the time a frame takes to reach the screen.
+const POINTER_WINDOW: Duration = Duration::from_millis(70);
+/// Default look-ahead; `~/.config/kyber-cursor/glow-lead-ms` overrides it so it
+/// can be tuned by feel without a rebuild.
+const GLOW_LEAD_MS: f64 = 20.0;
+/// Never aim further ahead than this many logical px.
+const GLOW_LEAD_MAX: f64 = 60.0;
+
+/// Where the pointer will be by the time a frame drawn now is on screen,
+/// from its recent speed; the pointer's own position when it is slow or the
+/// guess would land on another screen.
+fn led_position(
+    samples: &std::collections::VecDeque<(Instant, (f64, f64))>,
+    pl: &Placement,
+    lead_s: f64,
+) -> (f64, f64) {
+    let (Some(&(t0, a)), Some(&(t1, b))) = (samples.front(), samples.back()) else {
+        return samples.back().map_or((0.0, 0.0), |s| s.1);
+    };
+    let dt = t1.duration_since(t0).as_secs_f64();
+    if dt < 0.015 {
+        return b;
+    }
+    let (mut dx, mut dy) = ((b.0 - a.0) / dt * lead_s, (b.1 - a.1) / dt * lead_s);
+    let reach = dx.hypot(dy);
+    if reach > GLOW_LEAD_MAX {
+        dx *= GLOW_LEAD_MAX / reach;
+        dy *= GLOW_LEAD_MAX / reach;
+    }
+    let ahead = (b.0 + dx, b.1 + dy);
+    if cursor::monitor_at(&pl.mons, ahead.0, ahead.1) == Some(pl.mon) {
+        ahead
+    } else {
+        b
     }
 }
 
