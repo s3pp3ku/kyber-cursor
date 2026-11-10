@@ -27,6 +27,10 @@ pub const IDLE_RESET: u32 = 60;
 pub const STATE_FILE: &str = "aim-mode";
 /// Settings file holding the mirror switch (`on` / `off`).
 pub const MIRROR_FILE: &str = "aim-mirror";
+/// Settings file holding the turn switch (`on` / `off`). Off keeps the blade
+/// in the stock theme's pose, tip up-left like a regular pointer, while aim
+/// still draws the cursor and its glow together as one picture.
+pub const TURN_FILE: &str = "aim-turn";
 
 /// The two switches, read from the settings folder like every other Kyber
 /// setting. Missing files mean aim off and mirroring on.
@@ -34,6 +38,7 @@ pub const MIRROR_FILE: &str = "aim-mirror";
 pub struct AimSettings {
     pub enabled: bool,
     pub mirror: bool,
+    pub turn: bool,
 }
 
 impl Default for AimSettings {
@@ -41,6 +46,7 @@ impl Default for AimSettings {
         Self {
             enabled: false,
             mirror: true,
+            turn: true,
         }
     }
 }
@@ -61,6 +67,7 @@ impl AimSettings {
                 "on" => true,
                 _ => d.mirror,
             },
+            turn: read(TURN_FILE) != "off",
         }
     }
 }

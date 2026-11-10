@@ -63,6 +63,18 @@ mod wl {
         busy: bool,
     }
 
+    impl Drop for DmaSlot {
+        // Dropping a wayland-client proxy does not destroy the object, so
+        // without this the compositor kept every imported buffer alive. Each
+        // show/hide (every click) leaked three full-screen dma-bufs, charged
+        // to this service as shmem and then swap: gigabytes within a day.
+        fn drop(&mut self) {
+            if let Some(buffer) = self.buffer.take() {
+                buffer.destroy();
+            }
+        }
+    }
+
     pub struct App {
         registry_state: RegistryState,
         compositor: CompositorState,
@@ -555,7 +567,10 @@ mod wl {
             self.app.parent_buf = None;
             self.app.surface = None;
             self.app.layer_surface = None;
-            self.app.input_region = None;
+            // Same as the buffers: a dropped region proxy is never destroyed.
+            if let Some(region) = self.app.input_region.take() {
+                region.destroy();
+            }
             self.app.slots.clear();
             self.app.slot_w = 0;
             self.app.slot_h = 0;
@@ -1014,13 +1029,23 @@ pub fn run_daemon() -> i32 {
         eprintln!("kyber-ignite: no readable pointer devices — is this user in the 'input' group (and has the session restarted since)?");
         return 1;
     }
+    // Keep looking for newly plugged-in pointers, on a thread of its own: the
+    // scan opens and closes every /dev/input device, and each close waits out
+    // a kernel RCU grace period (~10 ms). With ~25 devices that is a quarter
+    // second, which froze the glow every 5 s when it ran on the frame loop.
+    {
+        let tx = tx.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(5));
+            watch_new(&mut watched, &tx);
+        });
+    }
     let player = Player::new();
     let mut engine = Engine::new();
     engine.load_trail_look();
     let mut rng = SmallRng::seed(1);
     let mut art: Option<Art> = None;
     let mut placement: Option<Placement> = None;
-    let mut last_rescan = Instant::now();
     let mut last_pos = (0.0, 0.0);
 
     // Aim borrows the compositor's pointer. The guard restores it on every
@@ -1047,7 +1072,7 @@ pub fn run_daemon() -> i32 {
             aim_polled = Instant::now();
             aim.reload();
         }
-        // Idle: sleep until input (rescan every 5 s, like the Python). Aim on
+        // Idle: sleep until input (or 5 s, to service aim settings). Aim on
         // means the cursor has to be redrawn even with no input, so the loop
         // below keeps running instead.
         if !aim.settings.enabled && !engine.is_live() && engine.trail.is_empty() {
@@ -1055,10 +1080,6 @@ pub fn run_daemon() -> i32 {
                 Ok(ev) => handle_button(ev, &mut engine, &player, now_s()),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return 0,
-            }
-            if last_rescan.elapsed() > Duration::from_secs(5) {
-                watch_new(&mut watched, &tx);
-                last_rescan = Instant::now();
             }
             // Service any press that arrived while idle.
             pump_press(
@@ -1123,10 +1144,6 @@ pub fn run_daemon() -> i32 {
                 audio::sound_mode() == kyber_core::config::SoundMode::Mute,
             ) {
                 player.play_clip("ignite");
-            }
-            if last_rescan.elapsed() > Duration::from_secs(5) {
-                watch_new(&mut watched, &tx);
-                last_rescan = Instant::now();
             }
             if glow_lead_read.elapsed() >= Duration::from_millis(500) {
                 glow_lead_read = Instant::now();
