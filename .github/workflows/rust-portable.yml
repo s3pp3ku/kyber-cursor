@@ -21,7 +21,7 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
@@ -36,7 +36,7 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: rustfmt, clippy
       - name: Build and package desktop app without changing the CI desktop

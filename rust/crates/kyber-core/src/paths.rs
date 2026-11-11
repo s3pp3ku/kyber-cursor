@@ -11,11 +11,11 @@ pub fn home_dir() -> Result<PathBuf, String> {
 pub fn settings_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
-        return std::env::var_os("APPDATA")
+        std::env::var_os("APPDATA")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .map(|path| path.join("kyber-cursor"))
-            .ok_or_else(|| "cannot locate your roaming app data folder".into());
+            .ok_or_else(|| "cannot locate your roaming app data folder".into())
     }
 
     #[cfg(not(target_os = "windows"))]
