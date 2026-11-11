@@ -1,49 +1,75 @@
 # Changelog
 
-## Unreleased — aim (the blade faces your movement)
+## 1.5.0 — Aim, sparks and a steadier glow
 
-- New **Aim** mode, off by default: the blade turns to face the pointer's
-  direction of travel and keeps its angle when the pointer stops (the
-  Worms-cursor idea, maths ported from `otlet.worms-cursor`). The turn is
-  smoothed over 8 px of travel with a 3° deadband and a 720°/s slew, so it
-  reads as aiming rather than snapping. `kyber aim on|off|toggle`, a switch
-  under "More settings", state in `<settings>/aim-mode`.
-- Aim lives in the native overlay runtime only: the XCursor theme is a static
-  bitmap and cannot rotate, so `kyber aim on` reports that and leaves the
-  switch off on the legacy path. The overlay caches the whole cursor body once
-  per (color, size), draws it turned about its tip every frame, and hides the
-  compositor pointer only after the replacement is on screen. The pointer comes
-  back on `kyber aim off`, SIGTERM/SIGINT, a panic and any other clean exit;
-  SIGKILL cannot be caught and is documented.
-- `kyber aim mirror on|off` (default on) reflects the artwork across the
-  pointer axis whenever the unmirrored glyph would turn its lit edge away, so
-  the light keeps reading from the same side as the blade spins.
-- Idle cost: the loop ticks at 60 fps while aim is on but only uploads a frame
-  when the picture can change, and damage stays around the cursor.
-- `kyber config` gained `"aim"` and `"aimMirror"`; `kyber status` lists aim.
+**Updating from 1.4 or earlier:** this release changes the Rust runtime, so
+updating the plugin files is not enough. Run
+`omarchy plugin update io.github.s3pp3ku.kyber-cursor`, then run the setup
+command again with the options you chose before (it rebuilds `kyber` and
+`kyber-ignite`), restart the shell once (`omarchy-restart-shell`), and finish
+with `kyber doctor`.
 
-## Unreleased — lightsaber sparks
+### New
 
-- Sparks now fly off the drag trail, drawn by Kyber itself on every platform
-  (kyber-core), so Plume is no longer needed for them. They are hard cutting
-  sparks: short streaks that shoot off the blade and stall within a few pixels.
-  A quarter wear the glow color; the rest burn from orange to deep red like hot
-  metal (`kyber sparks colors glow` keeps them all in the glow color).
-- Over light backgrounds the glowing edges get a crisp outline in a deeper
-  shade of the glow color, so they stand out from white pages.
-- One effects switch replaces the trail switch in the popup: Full (trail,
-  sparks, all sounds; the default), Minimal (trail, no sparks, ignite sounds)
-  and Basic (just the glow, silent). `kyber effects full|minimal|basic`;
-  middle-clicking the bar button cycles them.
-- New settings under "More settings": how long sparks last
-  (`kyber sparks life`, default 850 ms) and how close together they fly
-  (`kyber sparks gap`, default 20 px), plus the separate sound modes, the trail
-  switch and the other looks (Ribbon, Beads, Echoes, no trail; Bubbles or no
-  particles). Comet + Sparks is the default.
-- Fixed: the Beads and Echoes looks were sized wrongly; the glow overlay's
-  trail ignored the glow color; trails were blurry on scaled (HiDPI) screens.
-- Credit: the trail looks are adapted from Plume by Andrei C. Popa
-  (https://github.com/qempexe/plume, MIT). See THIRD_PARTY_NOTICES.md.
+- **Aim** (off by default): the overlay runtime draws the whole cursor, and the
+  blade turns to face the direction you move. It keeps that angle when you stop.
+  The idea and the heading maths come from otlet's Worms cursor (see Credits).
+  `kyber aim on|off|toggle`, plus a switch in the popup.
+  - The glow is drawn with the blade in one picture, so the glow and the blade
+    never drift apart.
+  - `kyber aim mirror on|off` (default on) flips the artwork so the lit edge
+    stays on the same side as the blade turns.
+  - To keep the locked-together glow without the turn, write `off` to
+    `~/.config/kyber-cursor/aim-turn`. The blade then stays in the normal
+    pointer pose.
+  - The cursor shows above bar popups. The compositor pointer comes back on
+    `kyber aim off` and on any clean exit.
+  - Aim needs the overlay runtime. The XCursor theme is a fixed image, so on
+    that path `kyber aim on` says so and stays off.
+- **Sparks** fly off the drag trail. Kyber draws them itself, so you do not
+  need Plume. Most burn from orange to deep red like hot metal, and some wear
+  the glow color (`kyber sparks colors glow` uses the glow color for all).
+  `kyber sparks life MS` (default 850) and `kyber sparks gap PX` (default 20)
+  change them.
+- **Effects presets:** Full (trail, sparks, all sounds; the default), Minimal
+  (trail, no sparks, ignite sounds) and Basic (only the glow, no sound).
+  `kyber effects full|minimal|basic`, or middle-click the bar button.
+
+### Changed
+
+- The pointer stands more upright: the blade axis is 62 degrees (was 53.4).
+  Cursor files rebuild by themselves on the next `kyber apply`.
+- The trail is the comet only. The Ribbon, Beads, Echoes and Bubbles looks and
+  the Plume bridge are removed. `kyber style` is now `comet|none` and
+  `kyber sparks` is `sparks|off`.
+- The popup is simpler: the on/off switch sits under the header, and the
+  "More settings" fold is gone. The mouse wheel over a slider scrolls the panel
+  and does not change the value.
+- grab and grabbing cursors use the plain blade, so no glow shows behind a hand.
+- The glow color fits the blade color better. Dark backgrounds keep the real
+  hue, and light pages get a deeper, more saturated halo (yellow turns gold).
+  Glowing edges on light pages get a thin outline in a deeper shade.
+- The held glow leads the pointer by 20 ms to match the hardware pointer.
+  Change it in `~/.config/kyber-cursor/glow-lead-ms`.
+
+### Fixed
+
+- The glow froze for about a quarter of a second every 5 seconds (an input
+  device scan ran on the drawing loop).
+- A slow memory leak in kyber-ignite (graphics buffers were not freed).
+- A drag that moved to another screen left the glow and trail behind.
+- White pages got the dark-background glow, because the check sampled the
+  blade and not the page.
+- `kyber apply` did not take the cursor theme back after another tool (such
+  as the Omarchy cursor picker) pointed it at a different build.
+- Trails were blurry on scaled (HiDPI) screens, and the glow overlay's trail
+  ignored the glow color.
+
+### Credits
+
+- The trail ideas are adapted from Plume by Andrei C. Popa
+  (https://github.com/qempexe/plume, MIT). Aim ports the idea and heading
+  logic of otlet's Worms cursor. See THIRD_PARTY_NOTICES.md.
 
 ## 1.4.0 — Linux Rust runtime source
 
