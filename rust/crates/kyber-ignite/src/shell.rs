@@ -1761,3 +1761,103 @@ mod render_tests {
         );
     }
 }
+
+/// Glow lab: every blade color lit over a range of backgrounds, as one PNG,
+/// so a change to the glow can be judged everywhere at once. Upright aim
+/// pose, mid hum, fully ignited.
+///
+/// `KYBER_LAB_OUT=/path/sheet.png cargo test -p kyber-ignite glow_lab -- --ignored`
+#[cfg(test)]
+mod glow_lab {
+    use super::*;
+
+    pub const COLORS: [&str; 10] = [
+        "#ff2020", "#ff8c00", "#ffe600", "#ccc521", "#1efd7d", "#00e5ff", "#0009f5", "#8a2be2",
+        "#ff2ad4", "#f0f0f0",
+    ];
+    /// Backgrounds: black, terminal, dim wallpaper, mid gray, sky, light gray, white.
+    pub const BACKS: [[u8; 3]; 7] = [
+        [0, 0, 0],
+        [26, 27, 38],
+        [60, 52, 70],
+        [128, 128, 128],
+        [74, 144, 217],
+        [215, 215, 215],
+        [255, 255, 255],
+    ];
+
+    pub fn light_for(bg: [u8; 3]) -> f32 {
+        let l = shot::luminance_of_ppm(&[b"P6\n1 1\n255\n".to_vec(), bg.to_vec()].concat()).unwrap();
+        ((l as f64 - LIGHT_LO) / (LIGHT_HI - LIGHT_LO)).clamp(0.0, 1.0) as f32
+    }
+
+    /// One lit cursor over `bg`, `light` as the daemon would pick it.
+    pub fn cell(hex: &str, bg: [u8; 3], light: f32, cell: u32) -> Vec<u8> {
+        let art = crate::art::art_for_color(hex);
+        let f = cursor::units_to_logical(&kyber_core::geometry::SIZES, 1.6);
+        let bs = 2.0;
+        let baked = ((kyber_core::geometry::VIEW[2] * f * bs) * 2.0).round() as u32;
+        let body = AimCursor::build(hex, baked).expect("aim body");
+        let side = cell / bs as u32;
+        let frame = render_frame(
+            &FrameInput {
+                art: &art,
+                e: 1.0,
+                hum_haze: 1.0 - kyber_core::overlay::HUM_HAZE as f32 * 0.5,
+                hum_beam: 1.0 - kyber_core::overlay::HUM_BEAM as f32 * 0.5,
+                light,
+                f,
+                bs,
+                mon_x: 0.0,
+                mon_y: 0.0,
+                pos_x: side as f64 * 0.30,
+                pos_y: side as f64 * 0.22,
+                trail: &[],
+                look: TrailLook::default(),
+                aim: Some(&body),
+                aim_heading: kyber_core::aim::blade_heading(),
+                aim_mirror: false,
+                surf_w: side,
+                surf_h: side,
+            },
+            0.0,
+        );
+        frame
+            .pixels
+            .chunks_exact(4)
+            .flat_map(|p| {
+                let a = p[3] as u32;
+                (0..3).map(move |i| (p[i] as u32 + bg[i] as u32 * (255 - a) / 255).min(255) as u8)
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore]
+    fn glow_lab_sheet() {
+        let out = std::env::var("KYBER_LAB_OUT").unwrap_or_else(|_| "/tmp/kyber-glow-lab.png".into());
+        let colors: Vec<String> = std::env::var("KYBER_LAB_COLORS")
+            .map(|v| v.split(',').map(str::to_string).collect())
+            .unwrap_or_else(|_| COLORS.iter().map(|c| c.to_string()).collect());
+        let c = 160u32;
+        let (cols, rows) = (BACKS.len() as u32, colors.len() as u32);
+        let mut sheet = image::RgbImage::new(cols * c, rows * c);
+        for (r, hex) in colors.iter().enumerate() {
+            for (k, bg) in BACKS.iter().enumerate() {
+                // KYBER_LAB_LIGHT pins the light/dark blend, e.g. 0 to see
+                // what a misread background does.
+                let light = std::env::var("KYBER_LAB_LIGHT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| light_for(*bg));
+                let rgb = cell(hex, *bg, light, c);
+                for (i, p) in rgb.chunks_exact(3).enumerate() {
+                    let (x, y) = (i as u32 % c, i as u32 / c);
+                    sheet.put_pixel(k as u32 * c + x, r as u32 * c + y, image::Rgb([p[0], p[1], p[2]]));
+                }
+            }
+        }
+        sheet.save(&out).unwrap();
+        println!("glow lab: {out}");
+    }
+}
