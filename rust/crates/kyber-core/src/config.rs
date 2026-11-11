@@ -54,7 +54,9 @@ impl TrailStyle {
     pub const ALL: [Self; 2] = [Self::Comet, Self::None];
 
     pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|v| v.as_str() == s.trim().to_lowercase())
+        Self::ALL
+            .into_iter()
+            .find(|v| v.as_str() == s.trim().to_lowercase())
     }
 
     pub fn as_str(self) -> &'static str {
@@ -111,21 +113,36 @@ pub struct TrailLook {
 
 impl Default for TrailLook {
     fn default() -> Self {
-        Self { style: TrailStyle::Comet, particles: Particles::Sparks, spark_life: 850, spark_gap: 20, embers: true }
+        Self {
+            style: TrailStyle::Comet,
+            particles: Particles::Sparks,
+            spark_life: 850,
+            spark_gap: 20,
+            embers: true,
+        }
     }
 }
 
 impl TrailLook {
     pub const SPARK_LIFE_MS: (u32, u32) = (150, 1500);
     pub const SPARK_GAP_PX: (u32, u32) = (2, 40);
-    pub const FILES: [&'static str; 5] = ["trail-style", "trail-particles", "spark-life", "spark-gap", "spark-colors"];
+    pub const FILES: [&'static str; 5] = [
+        "trail-style",
+        "trail-particles",
+        "spark-life",
+        "spark-gap",
+        "spark-colors",
+    ];
 
     /// Read from a settings folder; missing or bad files keep the default.
     pub fn load(dir: &std::path::Path) -> Self {
         let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
         let d = Self::default();
         let num = |name: &str, (lo, hi): (u32, u32), fallback: u32| {
-            read(name).trim().parse::<u32>().map_or(fallback, |v| v.clamp(lo, hi))
+            read(name)
+                .trim()
+                .parse::<u32>()
+                .map_or(fallback, |v| v.clamp(lo, hi))
         };
         Self {
             style: TrailStyle::parse(&read("trail-style")).unwrap_or(d.style),
@@ -153,7 +170,11 @@ impl TrailLook {
 
     /// "mixed" (glow color plus embers) or "glow" (glow color only).
     pub fn spark_colors(&self) -> &'static str {
-        if self.embers { "mixed" } else { "glow" }
+        if self.embers {
+            "mixed"
+        } else {
+            "glow"
+        }
     }
 }
 

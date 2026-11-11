@@ -215,8 +215,16 @@ pub mod tune {
         // Neutral blades (white, gray) stay neutral: their halo on white is
         // a soft gray edge, the only contrast a white light can have there.
         // Darkened yellow is olive; a deep gold reads as the same blade.
-        let h = if (40.0..75.0).contains(&h) { 40.0 + (h - 40.0) * 0.3 } else { h };
-        let vivid = if s < 0.12 { rgb } else { from_hsv(h, s.max(0.85), 1.0) };
+        let h = if (40.0..75.0).contains(&h) {
+            40.0 + (h - 40.0) * 0.3
+        } else {
+            h
+        };
+        let vivid = if s < 0.12 {
+            rgb
+        } else {
+            from_hsv(h, s.max(0.85), 1.0)
+        };
         (at_luma(vivid, LIGHT_LUMA), LIGHT_GAIN)
     }
 }

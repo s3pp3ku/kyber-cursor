@@ -5,7 +5,8 @@
 use std::path::PathBuf;
 
 use kyber_core::config::{
-    pick_random, volume_gain_str, ColorMode, KyberConfig, Particles, SmallRng, SoundMode, TrailLook, TrailStyle,
+    pick_random, volume_gain_str, ColorMode, KyberConfig, Particles, SmallRng, SoundMode,
+    TrailLook, TrailStyle,
 };
 use kyber_core::sound_pack;
 
@@ -310,16 +311,25 @@ fn cmd_sparks(args: &[String]) {
                 let _ = std::fs::remove_file(state_dir().join(name));
             }
             let d = TrailLook::default();
-            println!("{} {} {}ms {}px", d.style, d.particles.as_str(), d.spark_life, d.spark_gap);
+            println!(
+                "{} {} {}ms {}px",
+                d.style,
+                d.particles.as_str(),
+                d.spark_life,
+                d.spark_gap
+            );
         }
         "cycle" => {
             let all = Particles::ALL;
-            let next = all[(all.iter().position(|p| *p == look.particles).unwrap_or(0) + 1) % all.len()];
+            let next =
+                all[(all.iter().position(|p| *p == look.particles).unwrap_or(0) + 1) % all.len()];
             write_file("trail-particles", next.as_str());
             println!("{}", next.as_str());
         }
         v => {
-            let Some(p) = Particles::parse(v) else { usage() };
+            let Some(p) = Particles::parse(v) else {
+                usage()
+            };
             write_file("trail-particles", p.as_str());
             println!("{}", p.as_str());
         }
@@ -364,7 +374,10 @@ fn cmd_doctor() {
     } else {
         true
     };
-    println!("Rust runtime: {}", if service_ok { "running" } else { "not running" });
+    println!(
+        "Rust runtime: {}",
+        if service_ok { "running" } else { "not running" }
+    );
     if uses_native_bridge {
         println!(
             "Native cursor bridge: {}",
@@ -571,7 +584,10 @@ fn cmd_sounds(args: &[String]) {
                 files.sort();
                 println!("{kind}: {} clip(s)", files.len());
                 for path in files {
-                    println!("  {}", path.file_name().unwrap_or_default().to_string_lossy());
+                    println!(
+                        "  {}",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    );
                 }
             }
         }
@@ -587,7 +603,12 @@ fn cmd_sounds(args: &[String]) {
             let extension_ok = source
                 .extension()
                 .and_then(|value| value.to_str())
-                .is_some_and(|value| matches!(value.to_ascii_lowercase().as_str(), "wav" | "mp3" | "ogg" | "oga" | "flac"));
+                .is_some_and(|value| {
+                    matches!(
+                        value.to_ascii_lowercase().as_str(),
+                        "wav" | "mp3" | "ogg" | "oga" | "flac"
+                    )
+                });
             if !sound_pack::ROLES.contains(&role) || !source.is_file() || !extension_ok {
                 eprintln!("use an existing WAV, MP3, Ogg or FLAC file and a valid sound role");
                 std::process::exit(2);
@@ -603,7 +624,10 @@ fn cmd_sounds(args: &[String]) {
             }
             let destination = destination_dir.join(name);
             if destination.exists() {
-                eprintln!("kyber: {} already exists; no file replaced", destination.display());
+                eprintln!(
+                    "kyber: {} already exists; no file replaced",
+                    destination.display()
+                );
                 std::process::exit(1);
             }
             if let Err(error) = std::fs::copy(source, &destination) {
@@ -625,7 +649,10 @@ fn cmd_sounds(args: &[String]) {
                     .collect();
                 files.sort();
                 if let Some(path) = files.first() {
-                    println!("Playing {role}: {}", path.file_name().unwrap_or_default().to_string_lossy());
+                    println!(
+                        "Playing {role}: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    );
                     let status = std::process::Command::new("pw-play")
                         .arg("--volume")
                         .arg(format!("{gain:.4}"))
@@ -701,7 +728,10 @@ fn main() {
             );
             println!(
                 "look:    {} + {} ({} ms, every {} px)",
-                cfg.look.style, cfg.look.particles.as_str(), cfg.look.spark_life, cfg.look.spark_gap
+                cfg.look.style,
+                cfg.look.particles.as_str(),
+                cfg.look.spark_life,
+                cfg.look.spark_gap
             );
             println!(
                 "volume:  {} (gain {})",

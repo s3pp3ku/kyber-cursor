@@ -9,7 +9,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("supply output directory")?,
     );
     std::fs::create_dir_all(&out)?;
-    for color in ["#4efade", "#080bf9", "#ff0000", "#e4832a", "#1a8297", "#ffffff", "#000000"] {
+    for color in [
+        "#4efade", "#080bf9", "#ff0000", "#e4832a", "#1a8297", "#ffffff", "#000000",
+    ] {
         for light in [false, true] {
             let mut trail = Trail::default();
             assert!(trail.set_color(color));

@@ -231,7 +231,11 @@ impl Originals {
                 error = Some(e);
             }
         }
-        if let Some(e) = error { Err(e) } else { Ok(()) }
+        if let Some(e) = error {
+            Err(e)
+        } else {
+            Ok(())
+        }
     }
 }
 

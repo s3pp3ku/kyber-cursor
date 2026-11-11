@@ -154,7 +154,10 @@ impl Aim {
                 self.dir.1 = self.dir.1 * (1.0 - AIM_SMOOTH) + n.1 * AIM_SMOOTH;
                 self.acc = (0.0, 0.0);
                 let deg = self.dir.1.atan2(self.dir.0).to_degrees().rem_euclid(360.0);
-                if self.target.is_none_or(|t| circ_diff(deg, t).abs() > HYST_DEG) {
+                if self
+                    .target
+                    .is_none_or(|t| circ_diff(deg, t).abs() > HYST_DEG)
+                {
                     let first = self.target.is_none();
                     self.target = Some(deg);
                     if first {
@@ -380,11 +383,7 @@ mod tests {
         aim.target = Some(0.0);
         let ang = 20f64.to_radians();
         aim.update(ang.cos() * 20.0, ang.sin() * 20.0, 0.016);
-        assert!(
-            aim.target().is_some_and(|d| d > 9.0),
-            "{:?}",
-            aim.target()
-        );
+        assert!(aim.target().is_some_and(|d| d > 9.0), "{:?}", aim.target());
     }
 
     #[test]
@@ -469,7 +468,10 @@ mod tests {
             let placed = m.apply(ahead);
             let dir = (placed.0 - cursor.0, placed.1 - cursor.1);
             let got = dir.1.atan2(dir.0).to_degrees();
-            assert!(close(got, heading + 180.0), "heading {heading}: axis at {got}");
+            assert!(
+                close(got, heading + 180.0),
+                "heading {heading}: axis at {got}"
+            );
         }
     }
 
@@ -494,7 +496,10 @@ mod tests {
     #[test]
     fn the_stock_heading_is_never_mirrored() {
         let native = blade_heading();
-        assert!(!wants_mirror(native), "the theme's own angle must stay as drawn");
+        assert!(
+            !wants_mirror(native),
+            "the theme's own angle must stay as drawn"
+        );
         // ...and the mirror rule always lands the lit strip on the near side.
         for step in 0..360 {
             let heading = step as f64;

@@ -155,17 +155,30 @@ impl AimCursor {
             .ok_or("aim cursor: pixmap rejected the buffer")?;
         let ppu = px as f64 / geometry::VIEW[2];
         let tip = geometry::tip();
-        let tip_px = ((tip.0 - geometry::VIEW[0]) * ppu, (tip.1 - geometry::VIEW[1]) * ppu);
+        let tip_px = (
+            (tip.0 - geometry::VIEW[0]) * ppu,
+            (tip.1 - geometry::VIEW[1]) * ppu,
+        );
         // Farthest viewBox corner from the tip: the cursor never draws outside
         // a circle of this radius, whatever the heading.
         let (x0, y0) = (geometry::VIEW[0], geometry::VIEW[1]);
-        let radius = [(x0, y0), (x0 + geometry::VIEW[2], y0), (x0, y0 + geometry::VIEW[3]), (x0 + geometry::VIEW[2], y0 + geometry::VIEW[3])]
-            .into_iter()
-            .map(|c| (c.0 - tip.0).hypot(c.1 - tip.1))
-            .fold(0.0, f64::max)
+        let radius = [
+            (x0, y0),
+            (x0 + geometry::VIEW[2], y0),
+            (x0, y0 + geometry::VIEW[3]),
+            (x0 + geometry::VIEW[2], y0 + geometry::VIEW[3]),
+        ]
+        .into_iter()
+        .map(|c| (c.0 - tip.0).hypot(c.1 - tip.1))
+        .fold(0.0, f64::max)
             * ppu
             + 2.0;
-        Ok(Self { px: pixmap, ppu, tip_px, radius })
+        Ok(Self {
+            px: pixmap,
+            ppu,
+            tip_px,
+            radius,
+        })
     }
 
     pub fn ppu(&self) -> f64 {
@@ -446,8 +459,13 @@ fn overlay_beam(from: (f64, f64), to: (f64, f64), color: &str, width: f64, light
             + &geometry::line(from, to, &core, 2.0 * width, "")
             + &geometry::line(from, to, "#ffffff", 1.0 * width, "");
     }
-    let rim = geometry::line(from, to, &darken(&tint, 0.65), 3.8 * width, " opacity=\"0.22\"")
-        + &geometry::line(from, to, &tint, 3.0 * width, " opacity=\"0.85\"");
+    let rim = geometry::line(
+        from,
+        to,
+        &darken(&tint, 0.65),
+        3.8 * width,
+        " opacity=\"0.22\"",
+    ) + &geometry::line(from, to, &tint, 3.0 * width, " opacity=\"0.85\"");
     // A single continuous treatment for every shade; pale colors no longer
     // lose the white center when crossing a luminance/boost threshold.
     feathered_rim(&rim, 1.0)
@@ -610,9 +628,7 @@ mod tests {
 
     #[test]
     fn held_glow_boost_lifts_fringe_more_than_center() {
-        let mut pixels = vec![
-            0, 0, 0, 0, 10, 10, 10, 64, 20, 20, 20, 128, 30, 30, 30, 255,
-        ];
+        let mut pixels = vec![0, 0, 0, 0, 10, 10, 10, 64, 20, 20, 20, 128, 30, 30, 30, 255];
         boost_held_glow(&mut pixels);
         assert_eq!(pixels[3], 0, "transparent stays transparent");
         assert_eq!(pixels[15], 255, "opaque stays opaque");

@@ -7,14 +7,14 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex,
 };
 use std::time::Duration;
 
 use kyber_core::config::{SmallRng, SoundMode};
 use kyber_core::sound_pack::{self, ClipSource, RATE as SR};
-use rodio::{Source, buffer::SamplesBuffer};
+use rodio::{buffer::SamplesBuffer, Source};
 
 fn state_dir() -> PathBuf {
     std::env::var("XDG_CONFIG_HOME")

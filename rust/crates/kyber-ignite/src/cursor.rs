@@ -71,7 +71,10 @@ pub fn watch_layers() -> std::sync::mpsc::Receiver<()> {
         use std::io::BufRead;
         loop {
             if let Ok(stream) = UnixStream::connect(&path) {
-                for line in std::io::BufReader::new(stream).lines().map_while(Result::ok) {
+                for line in std::io::BufReader::new(stream)
+                    .lines()
+                    .map_while(Result::ok)
+                {
                     if raised_layer(&line).is_some() && tx.send(()).is_err() {
                         return;
                     }
@@ -205,7 +208,10 @@ mod tests {
 
     #[test]
     fn only_foreign_layers_raise_the_overlay() {
-        assert_eq!(raised_layer("openlayer>>omarchy-menu\n"), Some("omarchy-menu"));
+        assert_eq!(
+            raised_layer("openlayer>>omarchy-menu\n"),
+            Some("omarchy-menu")
+        );
         assert_eq!(raised_layer("openlayer>>cursor-ignite"), None);
         assert_eq!(raised_layer("openlayer>>plume"), None);
         assert_eq!(raised_layer("openlayer>>"), None);

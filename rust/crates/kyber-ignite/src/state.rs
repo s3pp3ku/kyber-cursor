@@ -4,7 +4,9 @@
 
 use std::collections::VecDeque;
 
-use kyber_core::overlay::{DOUBLE_CLICK_S, HUM_BEAM, HUM_HAZE, IGNITE_S, RETRACT_S, SOUND_DELAY_MS, SURGE_S, TRAIL_S};
+use kyber_core::overlay::{
+    DOUBLE_CLICK_S, HUM_BEAM, HUM_HAZE, IGNITE_S, RETRACT_S, SOUND_DELAY_MS, SURGE_S, TRAIL_S,
+};
 use kyber_core::trail::TrailLook;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

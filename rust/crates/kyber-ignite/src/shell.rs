@@ -32,10 +32,10 @@ mod wl {
     use sctk::reexports::protocols::wp::linux_dmabuf::zv1::client::{
         zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
     };
-    use sctk::registry::{ProvidesRegistryState, RegistryState};
     use sctk::reexports::protocols::xdg::shell::client::xdg_positioner::{
         Anchor as PopupAnchor, Gravity as PopupGravity,
     };
+    use sctk::registry::{ProvidesRegistryState, RegistryState};
     use sctk::shell::wlr_layer::{
         Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
         LayerSurfaceConfigure,
@@ -380,7 +380,9 @@ mod wl {
             match names.iter().position(|n| n.as_deref() == Some(name)) {
                 Some(i) => Some(outs[i].clone()),
                 None => {
-                    eprintln!("kyber-ignite: no output named {name} among {names:?}; using the first");
+                    eprintln!(
+                        "kyber-ignite: no output named {name} among {names:?}; using the first"
+                    );
                     outs.into_iter().next()
                 }
             }
@@ -502,14 +504,17 @@ mod wl {
                 .create_buffer(1, 1, 4, wayland_client::protocol::wl_shm::Format::Argb8888)
                 .map_err(|e| format!("shm buffer ({e})"))?;
             canvas.fill(0);
-            buffer.attach_to(&parent).map_err(|e| format!("attach ({e})"))?;
+            buffer
+                .attach_to(&parent)
+                .map_err(|e| format!("attach ({e})"))?;
             parent.damage_buffer(0, 0, 1, 1);
             parent.commit();
             self.app.parent_buf = Some(buffer);
             // The popup, covering the monitor from its origin.
             let positioner = {
                 let xdg = self.app.xdg.as_ref().ok_or("no xdg-shell")?;
-                let positioner = XdgPositioner::new(xdg).map_err(|e| format!("positioner ({e})"))?;
+                let positioner =
+                    XdgPositioner::new(xdg).map_err(|e| format!("positioner ({e})"))?;
                 positioner.set_size(w as i32, h as i32);
                 positioner.set_anchor_rect(0, 0, 1, 1);
                 positioner.set_anchor(PopupAnchor::TopLeft);
@@ -761,14 +766,8 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
     // Aim adds the whole cursor body, which is not the bloom: it has a tip
     // (the hotspot) and a reach of its own, and it turns, so its footprint is
     // the bounding circle of the turned glyph, not the glow's rectangle.
-    let aim_scale = fr
-        .aim
-        .map(|aim| fr.f * fr.bs / aim.ppu())
-        .unwrap_or(1.0);
-    let aim_cursor = (
-        (fr.pos_x - fr.mon_x) * fr.bs,
-        (fr.pos_y - fr.mon_y) * fr.bs,
-    );
+    let aim_scale = fr.aim.map(|aim| fr.f * fr.bs / aim.ppu()).unwrap_or(1.0);
+    let aim_cursor = ((fr.pos_x - fr.mon_x) * fr.bs, (fr.pos_y - fr.mon_y) * fr.bs);
     if let Some(aim) = fr.aim {
         // Round up: the damage must cover the anti-aliased edge too.
         let reach = (aim.radius() * aim_scale).ceil() as i32 + 1;
@@ -796,10 +795,15 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
         tiny_skia::Transform::from_row(a, b, c, d, e, f)
     });
     if glow_turn.is_some() {
-        let far = [(0.0, 0.0), (lw as f64, 0.0), (0.0, lh as f64), (lw as f64, lh as f64)]
-            .iter()
-            .map(|c| (c.0 - glow_tip.0).hypot(c.1 - glow_tip.1))
-            .fold(0.0, f64::max);
+        let far = [
+            (0.0, 0.0),
+            (lw as f64, 0.0),
+            (0.0, lh as f64),
+            (lw as f64, lh as f64),
+        ]
+        .iter()
+        .map(|c| (c.0 - glow_tip.0).hypot(c.1 - glow_tip.1))
+        .fold(0.0, f64::max);
         let reach = (far * s as f64).ceil() as i32 + 1;
         let (cx, cy) = (aim_cursor.0.round() as i32, aim_cursor.1.round() as i32);
         dirty = union_rect(dirty, (cx - reach, cy - reach, 2 * reach, 2 * reach));
@@ -818,8 +822,14 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
         for pt in fr.trail.iter().filter(|pt| newest.is_none_or(|n| pt.t > n)) {
             trail.sample(pt.t, pt.x, pt.y);
         }
-        let view = Bounds { x: fr.mon_x, y: fr.mon_y, width: fr.surf_w as f64, height: fr.surf_h as f64 };
-        if let Some(TrailImage { bounds, pixels }) = trail.render(now, view, fr.light > 0.5, fr.bs) {
+        let view = Bounds {
+            x: fr.mon_x,
+            y: fr.mon_y,
+            width: fr.surf_w as f64,
+            height: fr.surf_h as f64,
+        };
+        if let Some(TrailImage { bounds, pixels }) = trail.render(now, view, fr.light > 0.5, fr.bs)
+        {
             // `render` may lower the density for a huge trail; scale it back
             // up to the frame's pixels.
             let factor = pixels.width() as f64 / bounds.width;
@@ -834,7 +844,10 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
                 tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, bx as f32, by as f32),
                 None,
             );
-            let (w, h) = ((pixels.width() as f32 * scale).ceil() as i32, (pixels.height() as f32 * scale).ceil() as i32);
+            let (w, h) = (
+                (pixels.width() as f32 * scale).ceil() as i32,
+                (pixels.height() as f32 * scale).ceil() as i32,
+            );
             dirty = union_rect(dirty, (bx, by, w, h));
         }
     });
@@ -899,7 +912,13 @@ pub fn render_frame(fr: &FrameInput, now: f64) -> Frame {
     // drawn whether or not the blade is lit, because while aim is on this is
     // the only pointer the session has.
     if let Some(aim) = fr.aim {
-        aim.draw(&mut px, fr.aim_heading, fr.aim_mirror, aim_cursor, aim_scale);
+        aim.draw(
+            &mut px,
+            fr.aim_heading,
+            fr.aim_mirror,
+            aim_cursor,
+            aim_scale,
+        );
     }
 
     // Keep tiny-skia's premultiplied pixels. Wayland ARGB8888 requires
@@ -1160,14 +1179,24 @@ pub fn run_daemon() -> i32 {
             if let Ok(p) = cursor::cursor_pos() {
                 last_pos = p;
                 samples.push_back((Instant::now(), p));
-                while samples.front().is_some_and(|(t, _)| t.elapsed() > POINTER_WINDOW) {
+                while samples
+                    .front()
+                    .is_some_and(|(t, _)| t.elapsed() > POINTER_WINDOW)
+                {
                     samples.pop_front();
                 }
             }
             let now = now_s();
             let live = engine.tick(now, Some(last_pos));
             let aimed = aim.settings.enabled
-                && arm_aim(&mut aim, &mut art, &mut overlay, &mut placement, last_pos, &mut aim_warned);
+                && arm_aim(
+                    &mut aim,
+                    &mut art,
+                    &mut overlay,
+                    &mut placement,
+                    last_pos,
+                    &mut aim_warned,
+                );
             // A drag that crosses to another screen takes the glow with it:
             // aim follows the pointer on its own, the held glow did not.
             if live && !aimed {
@@ -1206,7 +1235,11 @@ pub fn run_daemon() -> i32 {
                     // Aim draws the whole cursor itself; otherwise the glow is
                     // laid over a pointer the compositor moves instantly, so it
                     // is aimed a little ahead to land on the tip, not behind it.
-                    let glow_pos = if aimed { last_pos } else { led_position(&samples, pl, glow_lead_s) };
+                    let glow_pos = if aimed {
+                        last_pos
+                    } else {
+                        led_position(&samples, pl, glow_lead_s)
+                    };
                     let flicker = rng.next_f64() as f32 * 2.0 - 1.0;
                     let (hum_haze, hum_beam) = engine.hum(flicker);
                     let frame = render_frame(
@@ -1296,16 +1329,25 @@ fn follow_pointer(
     pos: (f64, f64),
     last_drawn: &mut Option<((f64, f64), f64)>,
 ) {
-    let Some(old) = placement.as_ref() else { return };
+    let Some(old) = placement.as_ref() else {
+        return;
+    };
     if cursor::monitor_at(&old.mons, pos.0, pos.1).is_none_or(|m| m == old.mon) {
         return;
     }
     let light = old.light;
-    let Some((mons, mut pl, _)) = place() else { return };
-    let Some(out) = overlay.output_by_name(&mons[pl.mon].name) else { return };
+    let Some((mons, mut pl, _)) = place() else {
+        return;
+    };
+    let Some(out) = overlay.output_by_name(&mons[pl.mon].name) else {
+        return;
+    };
     pl.light = light;
     pl.mons = mons;
-    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_ok() {
+    if overlay
+        .show(&out, pl.surf_w, pl.surf_h, pl.bs, false)
+        .is_ok()
+    {
         *placement = Some(pl);
         *last_drawn = None;
     }
@@ -1323,7 +1365,9 @@ fn remap_overlay(overlay: &mut wl::Overlay, placement: Option<&Placement>) -> bo
     let Some(out) = overlay.output_by_name(&pl.mons[pl.mon].name) else {
         return false;
     };
-    overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, true).is_ok()
+    overlay
+        .show(&out, pl.surf_w, pl.surf_h, pl.bs, true)
+        .is_ok()
 }
 
 /// Keep aim's replacement cursor on screen: overlay presented on the cursor's
@@ -1357,9 +1401,7 @@ fn arm_aim(
     }
     let stale = match placement.as_ref() {
         None => true,
-        Some(p) => {
-            !overlay.is_shown() || cursor::monitor_at(&p.mons, pos.0, pos.1) != Some(p.mon)
-        }
+        Some(p) => !overlay.is_shown() || cursor::monitor_at(&p.mons, pos.0, pos.1) != Some(p.mon),
     };
     if stale {
         let Some((mons, mut pl, _)) = place() else {
@@ -1370,7 +1412,10 @@ fn arm_aim(
             return false;
         };
         pl.mons = mons;
-        if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, true).is_err() {
+        if overlay
+            .show(&out, pl.surf_w, pl.surf_h, pl.bs, true)
+            .is_err()
+        {
             return false;
         }
         *placement = Some(pl);
@@ -1457,7 +1502,10 @@ fn pump_press(
         let Some(out) = overlay.output_by_name(&wlname) else {
             return;
         };
-        if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_err() {
+        if overlay
+            .show(&out, pl.surf_w, pl.surf_h, pl.bs, false)
+            .is_err()
+        {
             return;
         }
     }
@@ -1512,7 +1560,10 @@ pub fn run_demo(seconds: f64) -> i32 {
         eprintln!("kyber-ignite: no output");
         return 1;
     };
-    if overlay.show(&out, pl.surf_w, pl.surf_h, pl.bs, false).is_err() {
+    if overlay
+        .show(&out, pl.surf_w, pl.surf_h, pl.bs, false)
+        .is_err()
+    {
         return 1;
     }
     let mut rng = SmallRng::seed(7);
@@ -1584,26 +1635,29 @@ pub fn run_demo(seconds: f64) -> i32 {
 
         // Submit a fully transparent frame so idle is visibly and
         // verifiably off between pulses.
-        let frame = render_frame(&FrameInput {
-            art: &a,
-            e: 0.0,
-            hum_haze: 0.0,
-            hum_beam: 0.0,
-            light: pl.light,
-            f: pl.f,
-            bs: pl.bs as f64,
-            mon_x: m.x,
-            mon_y: m.y,
-            pos_x: last_pos.0,
-            pos_y: last_pos.1,
-            trail: &[],
-            look: engine.trail_look,
-            aim: None,
-            aim_heading: 0.0,
-            aim_mirror: false,
-            surf_w: pl.surf_w,
-            surf_h: pl.surf_h,
-        }, engine.t);
+        let frame = render_frame(
+            &FrameInput {
+                art: &a,
+                e: 0.0,
+                hum_haze: 0.0,
+                hum_beam: 0.0,
+                light: pl.light,
+                f: pl.f,
+                bs: pl.bs as f64,
+                mon_x: m.x,
+                mon_y: m.y,
+                pos_x: last_pos.0,
+                pos_y: last_pos.1,
+                trail: &[],
+                look: engine.trail_look,
+                aim: None,
+                aim_heading: 0.0,
+                aim_mirror: false,
+                surf_w: pl.surf_w,
+                surf_h: pl.surf_h,
+            },
+            engine.t,
+        );
         if let Err(e) = overlay.draw(&frame.pixels, frame.w, frame.h, frame.dirty) {
             eprintln!("kyber-ignite: clear failed: {e}");
             overlay.hide();
@@ -1706,7 +1760,11 @@ mod render_tests {
         // Damage covers the cursor footprint, not the screen.
         let (_, _, w, h) = frame.dirty;
         assert!(w > 0 && h > 0, "{:?}", frame.dirty);
-        assert!(w <= 220 && h <= 220, "full-screen damage: {:?}", frame.dirty);
+        assert!(
+            w <= 220 && h <= 220,
+            "full-screen damage: {:?}",
+            frame.dirty
+        );
     }
 
     #[test]
@@ -1787,7 +1845,8 @@ mod glow_lab {
     ];
 
     pub fn light_for(bg: [u8; 3]) -> f32 {
-        let l = shot::luminance_of_ppm(&[b"P6\n1 1\n255\n".to_vec(), bg.to_vec()].concat()).unwrap();
+        let l =
+            shot::luminance_of_ppm(&[b"P6\n1 1\n255\n".to_vec(), bg.to_vec()].concat()).unwrap();
         ((l as f64 - LIGHT_LO) / (LIGHT_HI - LIGHT_LO)).clamp(0.0, 1.0) as f32
     }
 
@@ -1835,7 +1894,8 @@ mod glow_lab {
     #[test]
     #[ignore]
     fn glow_lab_sheet() {
-        let out = std::env::var("KYBER_LAB_OUT").unwrap_or_else(|_| "/tmp/kyber-glow-lab.png".into());
+        let out =
+            std::env::var("KYBER_LAB_OUT").unwrap_or_else(|_| "/tmp/kyber-glow-lab.png".into());
         let colors: Vec<String> = std::env::var("KYBER_LAB_COLORS")
             .map(|v| v.split(',').map(str::to_string).collect())
             .unwrap_or_else(|_| COLORS.iter().map(|c| c.to_string()).collect());
@@ -1853,7 +1913,11 @@ mod glow_lab {
                 let rgb = cell(hex, *bg, light, c);
                 for (i, p) in rgb.chunks_exact(3).enumerate() {
                     let (x, y) = (i as u32 % c, i as u32 / c);
-                    sheet.put_pixel(k as u32 * c + x, r as u32 * c + y, image::Rgb([p[0], p[1], p[2]]));
+                    sheet.put_pixel(
+                        k as u32 * c + x,
+                        r as u32 * c + y,
+                        image::Rgb([p[0], p[1], p[2]]),
+                    );
                 }
             }
         }

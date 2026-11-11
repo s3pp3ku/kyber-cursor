@@ -21,10 +21,7 @@ const SHEET_TILE: u32 = 240;
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args_os().skip(1);
-    let out = PathBuf::from(
-        args.next()
-            .ok_or("usage: aim_headings OUT_DIR [ACCENT]")?,
-    );
+    let out = PathBuf::from(args.next().ok_or("usage: aim_headings OUT_DIR [ACCENT]")?);
     let accent = args
         .next()
         .map(|a| a.to_string_lossy().to_string())
@@ -57,7 +54,11 @@ fn render(out: &Path, accent: &str) -> Result<(), String> {
             let png = kyber_core::render::to_png(tile.data(), TILE);
             let file = dir.join(format!("heading-{heading:03}.png"));
             std::fs::write(&file, &png).map_err(|e| e.to_string())?;
-            frames.push(image::load_from_memory(&png).map_err(|e| e.to_string())?.to_rgba8());
+            frames.push(
+                image::load_from_memory(&png)
+                    .map_err(|e| e.to_string())?
+                    .to_rgba8(),
+            );
             println!("{}", file.display());
         }
         // Contact sheet: the eight headings in one image, left to right.

@@ -63,7 +63,15 @@ pub fn background_luma(x: f64, y: f64) -> Option<f32> {
     let size = (REACH * 2.0) as i32;
     let (ox, oy) = (x as i32 - REACH as i32, y as i32 - REACH as i32);
     let out = Command::new("grim")
-        .args(["-g", &format!("{ox},{oy} {size}x{size}"), "-t", "ppm", "-s", "0.25", "-"])
+        .args([
+            "-g",
+            &format!("{ox},{oy} {size}x{size}"),
+            "-t",
+            "ppm",
+            "-s",
+            "0.25",
+            "-",
+        ])
         .output()
         .ok()?;
     if !out.status.success() {

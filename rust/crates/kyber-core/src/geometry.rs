@@ -619,7 +619,10 @@ mod tests {
         assert!((axis_angle().to_degrees() - 62.0).abs() < 1e-9);
         // the cursor picker and the Python fallback build from lib/build.py
         let py = include_str!("../../../../lib/build.py");
-        assert!(py.contains("ANG = math.radians(62.0)"), "lib/build.py must keep the 62 degree axis");
+        assert!(
+            py.contains("ANG = math.radians(62.0)"),
+            "lib/build.py must keep the 62 degree axis"
+        );
     }
 
     #[test]

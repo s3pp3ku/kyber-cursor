@@ -470,7 +470,7 @@ impl App {
             };
             if let Some(trail) =
                 self.trail
-                    .render(now as f64 / 1000.0, viewport, self.settings.light)
+                    .render(now as f64 / 1000.0, viewport, self.settings.light, scale)
             {
                 self.layer.present(trail, scale)?;
             } else {

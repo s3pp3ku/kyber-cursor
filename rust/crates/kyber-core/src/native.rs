@@ -225,9 +225,8 @@ mod tests {
             );
             // Held frames must read brighter than the still ignited frame; the
             // ignition hand-over deliberately gains light instead of matching.
-            let alpha_sum = |img: &image::RgbaImage| -> u64 {
-                img.pixels().map(|p| u64::from(p[3])).sum()
-            };
+            let alpha_sum =
+                |img: &image::RgbaImage| -> u64 { img.pixels().map(|p| u64::from(p[3])).sum() };
             let still_light = alpha_sum(&full);
             for (phase, frame) in held.iter().enumerate() {
                 assert!(

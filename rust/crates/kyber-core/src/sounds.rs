@@ -126,7 +126,13 @@ pub fn ignite(seed: u64, base: f32, length: f32) -> Vec<f32> {
     });
     let w = swept_noise(
         n,
-        |t| if t < 0.5f32 { 260.0f32 * (t * 5.2f32).exp() } else { 3500.0f32 },
+        |t| {
+            if t < 0.5f32 {
+                260.0f32 * (t * 5.2f32).exp()
+            } else {
+                3500.0f32
+            }
+        },
         4.0f32,
         &mut rng,
     );
@@ -142,7 +148,10 @@ pub fn ignite(seed: u64, base: f32, length: f32) -> Vec<f32> {
     for (i, v) in snap.into_iter().enumerate() {
         snap_full[i] = v;
     }
-    normalize(fade_edges(mix(&[h, w, scale(snap_full, 0.7f32)]), 0.004f32, 0.03f32), PEAK)
+    normalize(
+        fade_edges(mix(&[h, w, scale(snap_full, 0.7f32)]), 0.004f32, 0.03f32),
+        PEAK,
+    )
 }
 
 /// Blade powering off: falling hum + whoosh. 0.8 s.
@@ -152,7 +161,12 @@ pub fn off(seed: u64, base: f32, length: f32) -> Vec<f32> {
     let fall = |t: f32| base * (0.45f32 + 0.55f32 * (-t / 0.2f32).exp());
     let h = hum(n, fall);
     let h = shape(h, |t| (-t / 0.22f32).exp());
-    let w = swept_noise(n, |t| 2600.0f32 * (-t * 4.5f32).exp() + 160.0f32, 4.0f32, &mut rng);
+    let w = swept_noise(
+        n,
+        |t| 2600.0f32 * (-t * 4.5f32).exp() + 160.0f32,
+        4.0f32,
+        &mut rng,
+    );
     let w = shape(w, |t| (-t / 0.2f32).exp() * 0.5f32);
     normalize(fade_edges(mix(&[h, w]), 0.004f32, 0.08f32), PEAK)
 }
@@ -183,7 +197,11 @@ pub fn clash(seed: u64, length: f32) -> Vec<f32> {
     let h = hum(n, |t| 96.0f32 * (1.0f32 + 0.15f32 * (-t / 0.1f32).exp()));
     let h = shape(h, |t| 0.8f32 * (-t / 0.28f32).exp());
     normalize(
-        fade_edges(mix(&[scale(crack, 1.0f32), scale(ring, 0.8f32), h]), 0.004f32, 0.03f32),
+        fade_edges(
+            mix(&[scale(crack, 1.0f32), scale(ring, 0.8f32), h]),
+            0.004f32,
+            0.03f32,
+        ),
         PEAK,
     )
 }
@@ -208,8 +226,8 @@ pub fn double_clash(seed_a: u64, seed_b: u64, gap: f32) -> Vec<f32> {
 pub fn swipe(seed: u64, speed: f32) -> Vec<f32> {
     let mut rng = SmallRng::seed(seed);
     let force = ((speed - 650.0f32) / 3500.0f32).clamp(0.0f32, 1.0f32);
-    let length = (0.29f32 - 0.09f32 * force + rng.range(-0.025f64, 0.025f64) as f32)
-        .clamp(0.16f32, 0.34f32);
+    let length =
+        (0.29f32 - 0.09f32 * force + rng.range(-0.025f64, 0.025f64) as f32).clamp(0.16f32, 0.34f32);
     let n = (SR as f32 * length) as usize;
     let low = 260.0f32 + rng.range(0.0f64, 220.0f64) as f32;
     let peak = 1700.0f32 + force * 1500.0f32 + rng.range(-250.0f64, 250.0f64) as f32;
@@ -226,11 +244,16 @@ pub fn swipe(seed: u64, speed: f32) -> Vec<f32> {
     );
     let noise = shape(noise, |t| {
         let u = (t / length).clamp(0.0f32, 1.0f32);
-        (t / 0.006f32).min(1.0f32) * (1.0f32 - u).powf(1.25f32)
+        (t / 0.006f32).min(1.0f32)
+            * (1.0f32 - u).powf(1.25f32)
             * (0.75f32 + 0.25f32 * (phase + u * 8.0f32).sin())
     });
-    let body = hum(n, |t| 150.0f32 - 45.0f32 * (t / length).clamp(0.0f32, 1.0f32));
-    let body = shape(body, |t| 0.18f32 * (t / 0.008f32).min(1.0f32) * (-(t / length) * 4.0f32).exp());
+    let body = hum(n, |t| {
+        150.0f32 - 45.0f32 * (t / length).clamp(0.0f32, 1.0f32)
+    });
+    let body = shape(body, |t| {
+        0.18f32 * (t / 0.008f32).min(1.0f32) * (-(t / length) * 4.0f32).exp()
+    });
     normalize(fade_edges(mix(&[noise, body]), 0.002f32, 0.025f32), PEAK)
 }
 
@@ -276,7 +299,11 @@ pub fn build_pack(out: &Path) -> std::io::Result<Vec<PathBuf>> {
         ("clash", "clash-1.wav".into(), clash(61, 0.7f32)),
         ("clash", "clash-2.wav".into(), clash(73, 0.7f32)),
         ("clash", "clash-3.wav".into(), clash(89, 0.7f32)),
-        ("clash", "2-clash-1.wav".into(), double_clash(97, 101, 0.14f32)),
+        (
+            "clash",
+            "2-clash-1.wav".into(),
+            double_clash(97, 101, 0.14f32),
+        ),
         (
             "clash",
             "2-clash-2.wav".into(),
@@ -297,8 +324,14 @@ mod tests {
 
     #[test]
     fn clips_have_expected_lengths() {
-        assert_eq!(ignite(11, 78.0f32, 1.3f32).len(), (SR as f32 * 1.3f32) as usize);
-        assert_eq!(off(41, 80.0f32, 0.8f32).len(), (SR as f32 * 0.8f32) as usize);
+        assert_eq!(
+            ignite(11, 78.0f32, 1.3f32).len(),
+            (SR as f32 * 1.3f32) as usize
+        );
+        assert_eq!(
+            off(41, 80.0f32, 0.8f32).len(),
+            (SR as f32 * 0.8f32) as usize
+        );
         assert_eq!(clash(61, 0.7f32).len(), (SR as f32 * 0.7f32) as usize);
     }
 

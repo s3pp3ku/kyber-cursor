@@ -72,7 +72,11 @@ impl AimRuntime {
         let travel = self.state.update(pos.0, pos.1, now);
         // Turn off: hold the stock pose. The tracker still runs, so turning
         // back on starts from the real direction of travel.
-        self.heading = if self.settings.turn { travel } else { aim::blade_heading() };
+        self.heading = if self.settings.turn {
+            travel
+        } else {
+            aim::blade_heading()
+        };
         self.mirror_flip = aim::wants_mirror(self.heading);
         self.heading
     }
@@ -95,7 +99,11 @@ impl AimRuntime {
     /// theme currently resolves to. Rebuilds only when either changes.
     pub fn ensure_cursor(&mut self, px: u32) -> bool {
         let accent = self.accent_now();
-        if self.key.as_ref().is_some_and(|(a, p)| *a == accent && *p == px) {
+        if self
+            .key
+            .as_ref()
+            .is_some_and(|(a, p)| *a == accent && *p == px)
+        {
             return self.cursor.is_some();
         }
         match AimCursor::build(&accent, px) {
@@ -271,7 +279,11 @@ mod tests {
     #[test]
     fn mirroring_follows_the_heading_and_the_switch() {
         let mut runtime = AimRuntime::new();
-        runtime.settings = AimSettings { enabled: true, mirror: true, turn: true };
+        runtime.settings = AimSettings {
+            enabled: true,
+            mirror: true,
+            turn: true,
+        };
         // The theme's own heading: nothing to mirror.
         runtime.heading = aim::blade_heading();
         runtime.mirror_flip = aim::wants_mirror(runtime.heading);
@@ -288,7 +300,11 @@ mod tests {
     #[test]
     fn turn_off_holds_the_stock_pose() {
         let mut runtime = AimRuntime::new();
-        runtime.settings = AimSettings { enabled: true, mirror: true, turn: false };
+        runtime.settings = AimSettings {
+            enabled: true,
+            mirror: true,
+            turn: false,
+        };
         // Sweep right, then down: a turning blade would follow both.
         for i in 0..60 {
             let h = runtime.tick((i as f64 * 20.0, 0.0), i as f64 / 60.0);

@@ -23,11 +23,7 @@ const GRAVITY: f64 = 160.0;
 const EMBER_SHARE: f64 = 0.75;
 /// A hot-metal spark's color as it dies, hottest first: orange, red-orange,
 /// deep red. Dark enough to read over light backgrounds too.
-const EMBER_COOLING: [[f64; 3]; 3] = [
-    [1.0, 0.58, 0.16],
-    [0.90, 0.30, 0.06],
-    [0.62, 0.09, 0.03],
-];
+const EMBER_COOLING: [[f64; 3]; 3] = [[1.0, 0.58, 0.16], [0.90, 0.30, 0.06], [0.62, 0.09, 0.03]];
 /// How far a spark gets from the blade before it stalls, in logical px:
 /// sparks cut off the edge and stop short instead of flying away.
 const SPARK_REACH: (f64, f64) = (6.0, 18.0);
@@ -233,7 +229,8 @@ impl Trail {
 
     /// Age and move the particles up to `now`.
     fn step(&mut self, now: f64) {
-        self.particles.retain(|p| now - p.born < p.life && now >= p.born);
+        self.particles
+            .retain(|p| now - p.born < p.life && now >= p.born);
         let sparks = self.look.particles == Particles::Sparks;
         let gravity = if sparks { GRAVITY } else { 0.0 };
         for p in &mut self.particles {
@@ -300,13 +297,25 @@ impl Trail {
     /// Premultiplied RGBA, clipped to a monitor's global logical viewport.
     /// `factor` is pixels-per-logical-unit; pass the display buffer scale so the
     /// trail lands at the same pixel density as the frame.
-    pub fn render(&mut self, now: f64, viewport: Bounds, light: bool, factor: f64) -> Option<TrailImage> {
+    pub fn render(
+        &mut self,
+        now: f64,
+        viewport: Bounds,
+        light: bool,
+        factor: f64,
+    ) -> Option<TrailImage> {
         let bounds = self.bounds(now)?;
         let draw_path = self.points.len() >= 2 && self.look.style != TrailStyle::None;
         if (!draw_path && self.particles.is_empty())
-            || ![viewport.x, viewport.y, viewport.width, viewport.height, factor]
-                .iter()
-                .all(|v| v.is_finite())
+            || ![
+                viewport.x,
+                viewport.y,
+                viewport.width,
+                viewport.height,
+                factor,
+            ]
+            .iter()
+            .all(|v| v.is_finite())
             || viewport.width <= 0.0
             || viewport.height <= 0.0
             || factor <= 0.0
@@ -326,8 +335,14 @@ impl Trail {
         if width <= 0.0 || height <= 0.0 {
             return None;
         }
-        let factor = factor.min(2048.0 / width).min(2048.0 / height).min((1_048_576.0 / (width * height)).sqrt());
-        let mut pixels = Pixmap::new((width * factor).ceil() as u32, (height * factor).ceil() as u32)?;
+        let factor = factor
+            .min(2048.0 / width)
+            .min(2048.0 / height)
+            .min((1_048_576.0 / (width * height)).sqrt());
+        let mut pixels = Pixmap::new(
+            (width * factor).ceil() as u32,
+            (height * factor).ceil() as u32,
+        )?;
         // Every look wears the glow color, so the trail always matches the blade.
         let rgb = self.colors[usize::from(light)];
         let pen = Pen { rgb, x, y, factor };
@@ -344,7 +359,12 @@ impl Trail {
         }
 
         Some(TrailImage {
-            bounds: Bounds { x, y, width, height },
+            bounds: Bounds {
+                x,
+                y,
+                width,
+                height,
+            },
             pixels,
         })
     }
@@ -364,7 +384,12 @@ impl Trail {
             let Some(path) = path.finish() else { continue };
             for (width_scale, strength) in [(2.2, 0.04), (1.4, 0.08), (1.0, 0.22), (0.45, 0.40)] {
                 let alpha = strength * life.powf(1.5);
-                pen.stroke(pixels, &path, alpha as f64, 5.6 * width_scale * (0.2 + 0.8 * life as f64));
+                pen.stroke(
+                    pixels,
+                    &path,
+                    alpha as f64,
+                    5.6 * width_scale * (0.2 + 0.8 * life as f64),
+                );
             }
         }
     }
@@ -375,7 +400,14 @@ impl Trail {
         // Most burn from orange to deep red; the rest wear the glow color.
         for s in &self.particles {
             let t = s.t(now);
-            let pen = &if s.ember && self.look.embers { Pen { rgb: ember_color(t), ..*pen } } else { *pen };
+            let pen = &if s.ember && self.look.embers {
+                Pen {
+                    rgb: ember_color(t),
+                    ..*pen
+                }
+            } else {
+                *pen
+            };
             let mut path = PathBuilder::new();
             path.move_to(pen.px(s.x), pen.py(s.y));
             path.line_to(pen.px(s.x - s.vx * 0.05), pen.py(s.y - s.vy * 0.05));
@@ -417,7 +449,12 @@ impl Pen {
     /// `strength` 0..1 of the trail's full opacity.
     fn paint(&self, strength: f64) -> Option<Paint<'static>> {
         let alpha = (TRAIL_ALPHA * strength).clamp(0.0, 1.0) as f32;
-        let color = Color::from_rgba(self.rgb[0] as f32, self.rgb[1] as f32, self.rgb[2] as f32, alpha)?;
+        let color = Color::from_rgba(
+            self.rgb[0] as f32,
+            self.rgb[1] as f32,
+            self.rgb[2] as f32,
+            alpha,
+        )?;
         let mut paint = Paint::default();
         paint.set_color(color);
         paint.anti_alias = true;
@@ -426,7 +463,9 @@ impl Pen {
 
     /// `width` in logical px.
     fn stroke(&self, pixels: &mut Pixmap, path: &Path, strength: f64, width: f64) {
-        let Some(paint) = self.paint(strength) else { return };
+        let Some(paint) = self.paint(strength) else {
+            return;
+        };
         let stroke = Stroke {
             width: (width * self.factor) as f32,
             line_cap: LineCap::Round,
@@ -467,7 +506,11 @@ mod tests {
     #[test]
     fn none_style_is_empty() {
         let mut trail = Trail::default();
-        trail.set_look(TrailLook { style: TrailStyle::None, particles: Particles::Off, ..TrailLook::default() });
+        trail.set_look(TrailLook {
+            style: TrailStyle::None,
+            particles: Particles::Off,
+            ..TrailLook::default()
+        });
         for n in 0..40 {
             trail.sample(n as f64 / 100.0, 100.0 + n as f64 * 3.0, 200.0);
         }
@@ -477,16 +520,32 @@ mod tests {
     #[test]
     fn sparks_fly_with_the_path_fall_and_burn_out() {
         let mut trail = trace();
-        assert_eq!(trail.look(), TrailLook::default(), "sparks are the default look");
+        assert_eq!(
+            trail.look(),
+            TrailLook::default(),
+            "sparks are the default look"
+        );
         // 117 px of travel at one spark per 20 px
-        assert!((5..=7).contains(&trail.particle_count()), "{}", trail.particle_count());
+        assert!(
+            (5..=7).contains(&trail.particle_count()),
+            "{}",
+            trail.particle_count()
+        );
         trail.bounds(0.40);
-        let before: Vec<f64> = trail.particles.iter().filter(|p| p.born + p.life > 0.45).map(|p| p.vy).collect();
+        let before: Vec<f64> = trail
+            .particles
+            .iter()
+            .filter(|p| p.born + p.life > 0.45)
+            .map(|p| p.vy)
+            .collect();
         assert!(!before.is_empty());
         trail.bounds(0.45);
         for (p, vy) in trail.particles.iter().zip(before) {
             let drag = (-SPARK_DRAG / p.life * 0.05).exp();
-            assert!((p.vy - vy * drag - GRAVITY * 0.05).abs() < 1e-9, "drag slows sparks, gravity pulls them down");
+            assert!(
+                (p.vy - vy * drag - GRAVITY * 0.05).abs() < 1e-9,
+                "drag slows sparks, gravity pulls them down"
+            );
         }
         assert!(trail.render(0.40, VIEW, false, 2.0).is_some());
         // the path has faded by 0.39 + 0.60 s; the last spark by 0.39 + 0.85 s
@@ -501,11 +560,18 @@ mod tests {
             trail.sample(n as f64 / 100.0, 100.0 + n as f64 * 4.0, 200.0);
         }
         let embers = trail.particles.iter().filter(|p| p.ember).count();
-        assert!(embers > 0 && embers < trail.particle_count(), "a mix: {embers} of {}", trail.particle_count());
+        assert!(
+            embers > 0 && embers < trail.particle_count(),
+            "a mix: {embers} of {}",
+            trail.particle_count()
+        );
         assert_eq!(ember_color(0.0), EMBER_COOLING[0]);
         assert_eq!(ember_color(1.0), EMBER_COOLING[2]);
         let green = |t| ember_color(t)[1];
-        assert!(green(0.2) > green(0.5) && green(0.5) > green(0.9), "cools as it ages");
+        assert!(
+            green(0.2) > green(0.5) && green(0.5) > green(0.9),
+            "cools as it ages"
+        );
     }
 
     #[test]
@@ -515,8 +581,11 @@ mod tests {
             trail.sample(n as f64 / 100.0, 100.0 + n as f64 * 4.0, 200.0);
         }
         // each spark's random lifetime tells it apart as others burn out
-        let start: std::collections::HashMap<u64, (f64, f64)> =
-            trail.particles.iter().map(|p| (p.life.to_bits(), (p.x, p.y))).collect();
+        let start: std::collections::HashMap<u64, (f64, f64)> = trail
+            .particles
+            .iter()
+            .map(|p| (p.life.to_bits(), (p.x, p.y)))
+            .collect();
         assert_eq!(start.len(), trail.particle_count());
         let mut reach = 0.0f64;
         for frame in 1..=150 {
@@ -527,14 +596,20 @@ mod tests {
                 }
             }
         }
-        assert!(reach < SPARK_REACH.1 + 15.0, "a spark got {reach:.1} px from the blade");
+        assert!(
+            reach < SPARK_REACH.1 + 15.0,
+            "a spark got {reach:.1} px from the blade"
+        );
     }
 
     #[test]
     fn spark_gap_sets_how_close_together_they_are() {
         let count = |gap| {
             let mut trail = Trail::default();
-            trail.set_look(TrailLook { spark_gap: gap, ..TrailLook::default() });
+            trail.set_look(TrailLook {
+                spark_gap: gap,
+                ..TrailLook::default()
+            });
             for n in 0..40 {
                 trail.sample(n as f64 / 100.0, 100.0 + n as f64 * 3.0, 200.0);
             }
@@ -547,7 +622,11 @@ mod tests {
     fn spark_life_sets_how_long_they_last() {
         let alive_at = |life, now| {
             let mut trail = Trail::default();
-            trail.set_look(TrailLook { spark_life: life, style: TrailStyle::None, ..TrailLook::default() });
+            trail.set_look(TrailLook {
+                spark_life: life,
+                style: TrailStyle::None,
+                ..TrailLook::default()
+            });
             trail.sample(0.0, 100.0, 100.0);
             trail.sample(0.01, 140.0, 100.0);
             trail.bounds(now);
@@ -561,7 +640,10 @@ mod tests {
     fn sparks_wear_the_glow_color() {
         let mut trail = Trail::default();
         assert!(trail.set_color("#ff0000"));
-        trail.set_look(TrailLook { style: TrailStyle::None, ..TrailLook::default() });
+        trail.set_look(TrailLook {
+            style: TrailStyle::None,
+            ..TrailLook::default()
+        });
         trail.sample(0.0, 100.0, 100.0);
         trail.sample(0.01, 160.0, 100.0);
         let image = trail.render(0.02, VIEW, false, 1.0).unwrap();
@@ -580,7 +662,11 @@ mod tests {
             trail.sample(n as f64 / 100.0, 100.0, 100.0);
         }
         assert!(trail.render(1.0, VIEW, false, 1.0).is_none());
-        assert_eq!(trail.particle_count(), 0, "a still pointer throws no sparks");
+        assert_eq!(
+            trail.particle_count(),
+            0,
+            "a still pointer throws no sparks"
+        );
         trail.sample(1.01, 900.0, 100.0);
         assert_eq!(trail.point_count(), 1);
         trail.sample(f64::NAN, 0.0, 0.0);
@@ -590,9 +676,20 @@ mod tests {
     #[test]
     fn monitor_clipping_negative_coordinates_and_clear_are_supported() {
         let mut trail = trace();
-        assert!(trail.render(0.4, Bounds { x: -1000.0, ..VIEW }, false, 1.0).is_none());
+        assert!(trail
+            .render(0.4, Bounds { x: -1000.0, ..VIEW }, false, 1.0)
+            .is_none());
         let image = trail
-            .render(0.4, Bounds { x: 150.0, width: 100.0, ..VIEW }, true, 1.0)
+            .render(
+                0.4,
+                Bounds {
+                    x: 150.0,
+                    width: 100.0,
+                    ..VIEW
+                },
+                true,
+                1.0,
+            )
             .unwrap();
         assert!(image.bounds.x >= 150.0 && image.bounds.x + image.bounds.width <= 250.0);
         assert_eq!(image.pixels.width() as f64, image.bounds.width);
@@ -601,7 +698,17 @@ mod tests {
         trail.sample(0.5, -100.0, -100.0);
         trail.sample(0.6, -80.0, -80.0);
         let negative = trail
-            .render(0.6, Bounds { x: -200.0, y: -200.0, width: 200.0, height: 200.0 }, false, 1.0)
+            .render(
+                0.6,
+                Bounds {
+                    x: -200.0,
+                    y: -200.0,
+                    width: 200.0,
+                    height: 200.0,
+                },
+                false,
+                1.0,
+            )
             .unwrap();
         assert!(negative.bounds.x < 0.0 && negative.bounds.y < 0.0);
     }
@@ -610,7 +717,11 @@ mod tests {
     fn history_and_texture_allocations_are_bounded() {
         let mut trail = Trail::default();
         for n in 0..5000 {
-            trail.sample(n as f64 / 10000.0, (n % 100) as f64 * 3.0, (n / 100) as f64 * 3.0);
+            trail.sample(
+                n as f64 / 10000.0,
+                (n % 100) as f64 * 3.0,
+                (n / 100) as f64 * 3.0,
+            );
         }
         assert!(trail.point_count() <= MAX_POINTS);
         let image = trail.render(0.5, VIEW, false, 1.0).unwrap();
@@ -620,7 +731,16 @@ mod tests {
             trail.sample(n as f64 / 1000.0, n as f64 * 200.0, n as f64 * 200.0);
         }
         let huge = trail
-            .render(0.25, Bounds { width: 100_000.0, height: 100_000.0, ..VIEW }, false, 1.0)
+            .render(
+                0.25,
+                Bounds {
+                    width: 100_000.0,
+                    height: 100_000.0,
+                    ..VIEW
+                },
+                false,
+                1.0,
+            )
             .unwrap();
         assert!(huge.pixels.width() <= 2048 && huge.pixels.height() <= 2048);
         assert!(huge.pixels.data().len() < 4_300_000);
