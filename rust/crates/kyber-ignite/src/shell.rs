@@ -46,6 +46,7 @@ mod wl {
     use sctk::shm::slot::{Buffer as ShmBuffer, SlotPool};
     use sctk::shm::{Shm, ShmHandler};
     use std::os::fd::AsRawFd;
+    use wayland_client::backend::WaylandError;
     use wayland_client::protocol::{
         wl_buffer::WlBuffer, wl_output, wl_region::WlRegion, wl_surface::WlSurface,
     };
@@ -691,12 +692,25 @@ mod wl {
             // SAFETY: `pfd` points to one initialized pollfd for this call.
             let ready = unsafe { libc::poll(&mut pfd, 1, millis) };
             if ready > 0 && pfd.revents & libc::POLLIN != 0 {
-                if let Err(e) = guard.read() {
-                    eprintln!("kyber-ignite: wayland read ({e:?})");
+                match guard.read() {
+                    Ok(_) => {}
+                    Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    // Any other read error means the compositor connection is
+                    // dead and every later read fails the same way. Logging and
+                    // looping flooded the journal (2026-11-19), so exit and let
+                    // systemd (Restart=on-failure) start a fresh connection.
+                    Err(e) => connection_lost(&format!("wayland read ({e:?})")),
                 }
                 let _ = self.queue.dispatch_pending(&mut self.app);
+            } else if ready > 0 && pfd.revents & (libc::POLLHUP | libc::POLLERR) != 0 {
+                connection_lost("wayland socket hung up");
             }
         }
+    }
+
+    fn connection_lost(why: &str) -> ! {
+        eprintln!("kyber-ignite: {why}; compositor connection lost, exiting for restart");
+        std::process::exit(1);
     }
 }
 

@@ -10,7 +10,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use kyber_core::config::{SmallRng, SoundMode};
 use kyber_core::sound_pack::{self, ClipSource, RATE as SR};
@@ -175,10 +175,66 @@ fn rng() -> SmallRng {
     )
 }
 
-pub struct Player {
-    mixer: Option<rodio::mixer::Mixer>,
+/// How often a failing audio stream may write to the log.
+const ERROR_LOG_EVERY: Duration = Duration::from_secs(30);
+/// Pause on the audio thread after each stream error. cpal's ALSA worker
+/// retries at once, so without it a dead device spins a CPU core.
+const ERROR_BACKOFF: Duration = Duration::from_millis(250);
+/// Shortest gap between two attempts to reopen a failed stream.
+const REOPEN_AFTER: Duration = Duration::from_secs(5);
+
+/// Shared by the audio thread's error callback and the player.
+#[derive(Default)]
+struct StreamHealth {
+    broken: AtomicBool,
+    /// Errors since the last log line.
+    errors: AtomicU64,
+    last_log: Mutex<Option<Instant>>,
+}
+
+impl StreamHealth {
+    fn on_error(&self, err: rodio::cpal::StreamError) {
+        self.broken.store(true, Ordering::SeqCst);
+        let count = self.errors.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = Instant::now();
+        if let Ok(mut last) = self.last_log.lock() {
+            if last.is_none_or(|t| now.duration_since(t) >= ERROR_LOG_EVERY) {
+                *last = Some(now);
+                self.errors.store(0, Ordering::SeqCst);
+                eprintln!(
+                    "kyber-audio: stream error ({err}), {count} since last report; \
+                     sound reopens on the next clip"
+                );
+            }
+        }
+        std::thread::sleep(ERROR_BACKOFF);
+    }
+}
+
+/// Open the default output with our own error callback. rodio's default
+/// callback prints every error, which flooded the journal with millions of
+/// lines when the device went away (2026-11-21).
+fn open_output(health: &Arc<StreamHealth>) -> Result<rodio::OutputStream, String> {
+    let health = health.clone();
+    let mut stream = rodio::OutputStreamBuilder::from_default_device()
+        .map_err(|e| e.to_string())?
+        .with_error_callback(move |e| health.on_error(e))
+        .open_stream_or_fallback()
+        .map_err(|e| e.to_string())?;
+    stream.log_on_drop(false);
+    Ok(stream)
+}
+
+struct Output {
     // Kept alive: dropping the stream stops all playback.
-    _stream: Option<rodio::OutputStream>,
+    stream: Option<rodio::OutputStream>,
+    mixer: Option<rodio::mixer::Mixer>,
+    opened_at: Instant,
+}
+
+pub struct Player {
+    output: Mutex<Output>,
+    health: Arc<StreamHealth>,
     voices: Arc<Mutex<Vec<rodio::Sink>>>,
     epoch: Arc<AtomicU64>,
     blade_epoch: Arc<AtomicU64>,
@@ -191,42 +247,69 @@ pub struct Player {
 
 impl Player {
     pub fn new() -> Self {
-        match rodio::OutputStreamBuilder::open_default_stream() {
+        let health = Arc::<StreamHealth>::default();
+        let (stream, mixer) = match open_output(&health) {
             Ok(stream) => {
                 let mixer = stream.mixer().clone();
-                Self {
-                    mixer: Some(mixer),
-                    _stream: Some(stream),
-                    voices: Arc::default(),
-                    epoch: Arc::default(),
-                    blade_epoch: Arc::default(),
-                    swipe_epoch: Arc::default(),
-                    swipe_duck: Arc::default(),
-                    blade_release: Mutex::default(),
-                    previous: Mutex::default(),
-                    attack: Mutex::default(),
-                }
+                (Some(stream), Some(mixer))
             }
             Err(e) => {
                 eprintln!("kyber-ignite: no audio device ({e}); sounds off");
-                Self {
-                    mixer: None,
-                    _stream: None,
-                    voices: Arc::default(),
-                    epoch: Arc::default(),
-                    blade_epoch: Arc::default(),
-                    swipe_epoch: Arc::default(),
-                    swipe_duck: Arc::default(),
-                    blade_release: Mutex::default(),
-                    previous: Mutex::default(),
-                    attack: Mutex::default(),
-                }
+                // Let `mixer()` try again later (device may appear later).
+                health.broken.store(true, Ordering::SeqCst);
+                (None, None)
             }
+        };
+        Self {
+            output: Mutex::new(Output {
+                stream,
+                mixer,
+                opened_at: Instant::now(),
+            }),
+            health,
+            voices: Arc::default(),
+            epoch: Arc::default(),
+            blade_epoch: Arc::default(),
+            swipe_epoch: Arc::default(),
+            swipe_duck: Arc::default(),
+            blade_release: Mutex::default(),
+            previous: Mutex::default(),
+            attack: Mutex::default(),
         }
     }
 
     pub fn available(&self) -> bool {
-        self.mixer.is_some()
+        self.output.lock().is_ok_and(|o| o.mixer.is_some())
+    }
+
+    /// The live mixer. After a stream error, drop the broken stream and open
+    /// a fresh one (at most once per `REOPEN_AFTER`).
+    fn mixer(&self) -> Option<rodio::mixer::Mixer> {
+        let mut out = self.output.lock().ok()?;
+        if self.health.broken.load(Ordering::SeqCst) && out.opened_at.elapsed() >= REOPEN_AFTER {
+            if let Ok(mut voices) = self.voices.lock() {
+                voices.clear();
+            }
+            if let Ok(mut attack) = self.attack.lock() {
+                *attack = None;
+            }
+            out.mixer = None;
+            out.stream = None;
+            out.opened_at = Instant::now();
+            self.health.broken.store(false, Ordering::SeqCst);
+            match open_output(&self.health) {
+                Ok(stream) => {
+                    out.mixer = Some(stream.mixer().clone());
+                    out.stream = Some(stream);
+                    eprintln!("kyber-audio: stream reopened");
+                }
+                Err(e) => {
+                    self.health.broken.store(true, Ordering::SeqCst);
+                    eprintln!("kyber-audio: reopen failed ({e}); trying again later");
+                }
+            }
+        }
+        out.mixer.clone()
     }
 
     pub fn stop_all(&self) {
@@ -266,10 +349,10 @@ impl Player {
 
     fn start_blade(&self, source: ClipSource) {
         self.stop_blade();
-        let Some(mixer) = &self.mixer else { return };
+        let Some(mixer) = self.mixer() else { return };
         let Ok(attack) = decode(&source) else { return };
         let seconds = attack.samples.len() as f64 / attack.channels as f64 / attack.rate as f64;
-        let sink = rodio::Sink::connect_new(mixer);
+        let sink = rodio::Sink::connect_new(&mixer);
         sink.set_volume(gain());
         sink.append(SamplesBuffer::new(
             attack.channels,
@@ -294,7 +377,7 @@ impl Player {
             release,
             Some(self.swipe_duck.clone()),
         );
-        let sink = rodio::Sink::connect_new(mixer);
+        let sink = rodio::Sink::connect_new(&mixer);
         sink.set_volume(gain());
         sink.append(HumSource(held));
         if let Ok(mut voices) = self.voices.lock() {
@@ -309,7 +392,7 @@ impl Player {
     }
 
     fn play_file(&self, source: ClipSource, delay_ms: u64, all_only: bool) {
-        let Some(mixer) = self.mixer.clone() else {
+        let Some(mixer) = self.mixer() else {
             return;
         };
         let voices = self.voices.clone();
@@ -367,7 +450,7 @@ impl Player {
         if sound_mode() != SoundMode::All || self.swipe_duck.load(Ordering::SeqCst) {
             return;
         }
-        let Some(mixer) = self.mixer.clone() else {
+        let Some(mixer) = self.mixer() else {
             return;
         };
         let Some(source) = self.choose("swipe") else {
@@ -536,5 +619,24 @@ mod tests {
 
     fn gain_for(percent: i32) -> f32 {
         ((percent.clamp(0, 100) as f32) / 100.0).powi(3)
+    }
+}
+
+#[cfg(test)]
+mod stream_health_tests {
+    use super::*;
+
+    #[test]
+    fn errors_mark_broken_and_log_once_per_window() {
+        let health = StreamHealth::default();
+        let started = Instant::now();
+        for _ in 0..3 {
+            health.on_error(rodio::cpal::StreamError::DeviceNotAvailable);
+        }
+        assert!(health.broken.load(Ordering::SeqCst));
+        // First error logs and resets the count; the next two are counted.
+        assert_eq!(health.errors.load(Ordering::SeqCst), 2);
+        // Each error pauses the audio thread so a dead device cannot spin.
+        assert!(started.elapsed() >= ERROR_BACKOFF * 3);
     }
 }
